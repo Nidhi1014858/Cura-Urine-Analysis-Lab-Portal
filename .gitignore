@@ -1,1 +1,6 @@
 node_modules
+.env
+server/.env
+.vite/
+*.timestamp-*.mjs
+dist
