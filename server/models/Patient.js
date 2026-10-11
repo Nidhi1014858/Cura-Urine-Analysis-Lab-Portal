@@ -9,27 +9,39 @@ const patientSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-    required: [true, 'Name is required']
+    required: [true, 'Name is required'],
+    trim: true
   },
   age: {
     type: Number,
-    required: [true, 'Age is required']
+    required: [true, 'Age is required'],
+    min: [0, 'Age must be at least 0'],
+    max: [150, 'Age must be 150 or less']
   },
   gender: {
     type: String,
-    enum: ['Male', 'Female', 'Other']
+    enum: {
+      values: ['Male', 'Female', 'Other'],
+      message: 'Gender must be Male, Female, or Other'
+    },
+    default: 'Other'
   },
   phone: {
-    type: String
+    type: String,
+    trim: true
   },
   email: {
-    type: String
+    type: String,
+    trim: true,
+    lowercase: true
   },
   bloodGroup: {
-    type: String
+    type: String,
+    trim: true
   },
   address: {
-    type: String
+    type: String,
+    trim: true
   },
   registeredAt: {
     type: Date,

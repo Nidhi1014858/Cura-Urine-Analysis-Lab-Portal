@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -21,17 +22,11 @@ export const protect = asyncHandler(async (req, res, next) => {
     return res.status(401).json({ message: 'Not authenticated.' });
   }
 
-  let user = await User.findById(decoded.id);
-  if (!user && decoded.email) {
-    user = await User.findOne({ email: decoded.email.toLowerCase() });
+  if (!decoded?.id || !mongoose.Types.ObjectId.isValid(decoded.id)) {
+    return res.status(401).json({ message: 'Not authenticated.' });
   }
-  if (!user && decoded.id) {
-    if (String(decoded.id) === '6acbac4279f0d15638207abb') {
-      user = await User.findOne({ email: 'tech@cura.lab' });
-    } else if (String(decoded.id) === '6acbac4379f0d15638207abe') {
-      user = await User.findOne({ email: 'clinician@cura.lab' });
-    }
-  }
+
+  const user = await User.findById(decoded.id);
 
   if (!user) {
     return res.status(401).json({ message: 'Not authenticated.' });

@@ -24,7 +24,9 @@ import {
   Clock,
   ExternalLink,
   Wifi,
-  Zap
+  Zap,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 export function ReportDetailPage() {
@@ -36,19 +38,33 @@ export function ReportDetailPage() {
   const [test, setTest] = useState(null);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const fetchReport = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const data = await mockApi.getTestById(id);
+      if (!data) {
+        setError('Report not found');
+        setTest(null);
+        return;
+      }
       setTest(data);
       if (data.patientId) {
-        const p = await mockApi.getPatientById(data.patientId);
-        setPatient(p);
+        try {
+          const p = await mockApi.getPatientById(data.patientId);
+          setPatient(p);
+        } catch (pErr) {
+          console.warn('Could not load patient details', pErr);
+        }
       }
     } catch (err) {
-      addToast(err.message || 'Report not found', 'error');
+      console.error('Failed to load report:', err);
+      setError(err?.message || 'Report not found');
+      setTest(null);
     } finally {
       setLoading(false);
     }
@@ -59,12 +75,66 @@ export function ReportDetailPage() {
   }, [id]);
 
   const handleReviewSubmitted = async (testId, reviewData) => {
-    const updated = await mockApi.updateClinicianReview(testId, reviewData);
-    setTest(updated);
+    if (user?.role !== 'Clinician') {
+      addToast('Only Clinicians have permission to review reports.', 'error');
+      return;
+    }
+    const targetId = testId || test?.id || test?._id || test?.testCode || id;
+    try {
+      const updated = await mockApi.updateClinicianReview(targetId, {
+        status: reviewData.status,
+        notes: reviewData.notes
+      });
+      setTest(updated || {
+        ...test,
+        clinicianReview: {
+          reviewed: true,
+          status: reviewData.status,
+          notes: reviewData.notes,
+          reviewedBy: user?.name,
+          reviewerPhotoUrl: user?.photoUrl,
+          reviewedAt: new Date().toISOString()
+        }
+      });
+    } catch (err) {
+      console.error('Failed to submit review:', err);
+      throw err;
+    }
   };
 
   if (loading) return <LoadingSpinner text="Loading report details..." />;
-  if (!test) return <div className="p-8 text-center text-slate-500">Report not found.</div>;
+
+  if (error || !test) {
+    return (
+      <div className="max-w-md mx-auto my-12 p-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 text-center space-y-4 shadow-sm animate-fade-in">
+        <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="font-bold text-base text-slate-900 dark:text-white">
+            {error || 'Report Not Found'}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Could not retrieve test report #{id}. It may not exist or the server could not be reached.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={() => navigate('/reports')}
+            className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-semibold text-xs transition-colors"
+          >
+            ← Back to All Reports
+          </button>
+          <button
+            onClick={fetchReport}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs transition-colors shadow-sm"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isPendingReview = test.clinicianReview?.status === 'pending';
   const isClinician = user?.role === 'Clinician';

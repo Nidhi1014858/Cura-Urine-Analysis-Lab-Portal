@@ -12,7 +12,7 @@ export function AppLayout() {
   const refreshPendingCount = async () => {
     try {
       const stats = await mockApi.getDashboardStats();
-      setPendingCount(stats.pendingReviewsCount);
+      setPendingCount(stats?.pendingReviewsCount || 0);
     } catch (e) {
       console.error(e);
     }

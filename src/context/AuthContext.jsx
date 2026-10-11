@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { mockApi } from '../services/mockApi';
+import { apiClient } from '../services/apiClient';
+import { localApi } from '../services/localApi';
+
+const TOKEN_KEY = 'cura_token';
+const isMockMode = import.meta.env.VITE_USE_MOCK === 'true';
 
 const AuthContext = createContext();
 
@@ -7,13 +11,27 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Active auth service based on VITE_USE_MOCK switch
+  const authService = isMockMode ? localApi : apiClient;
+
   useEffect(() => {
     async function loadSession() {
       try {
-        const u = await mockApi.getCurrentUser();
-        setUser(u);
+        // Do not treat a missing token as an authenticated session in API mode
+        if (!isMockMode && !localStorage.getItem(TOKEN_KEY)) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        const u = await authService.getCurrentUser();
+        setUser(u || null);
       } catch (err) {
         console.error('Failed to load user session', err);
+        if (!isMockMode) {
+          localStorage.removeItem(TOKEN_KEY);
+        }
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -24,7 +42,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const u = await mockApi.login(email, password);
+      const u = await authService.login(email, password);
       setUser(u);
       return u;
     } finally {
@@ -35,7 +53,7 @@ export function AuthProvider({ children }) {
   const signup = async (userData) => {
     setLoading(true);
     try {
-      const u = await mockApi.signup(userData);
+      const u = await authService.signup(userData);
       setUser(u);
       return u;
     } finally {
@@ -44,20 +62,26 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await mockApi.logout();
-    setUser(null);
+    try {
+      await authService.logout();
+    } finally {
+      localStorage.removeItem(TOKEN_KEY);
+      setUser(null);
+    }
   };
 
   const updateUserProfile = async (updates) => {
     if (!user) return;
-    const updated = await mockApi.updateProfile(user.id, updates);
+    const userId = user.id || user._id;
+    const updated = await authService.updateProfile(userId, updates);
     setUser(updated);
     return updated;
   };
 
   const changePassword = async (currentPassword, newPassword) => {
     if (!user) return;
-    const updated = await mockApi.changePassword(user.id, currentPassword, newPassword);
+    const userId = user.id || user._id;
+    const updated = await authService.changePassword(userId, currentPassword, newPassword);
     setUser(updated);
     return updated;
   };

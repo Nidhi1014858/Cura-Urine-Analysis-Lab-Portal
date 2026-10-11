@@ -129,21 +129,57 @@ async function runTests() {
       failures++;
     }
 
-    // 8c. Stale token with test database ID
-    const staleToken = jwt.sign({ id: '6acbac4279f0d15638207abb' }, process.env.JWT_SECRET);
-    let staleReq = { headers: { authorization: `Bearer ${staleToken}` } };
-    let staleNextCalled = false;
-    let staleRes = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
-    await protect(staleReq, staleRes, () => { staleNextCalled = true; });
-    if (staleNextCalled && staleReq.user?.email === 'tech@cura.lab') {
-      console.log('PASS: Stale demo token seamlessly resolved to active user (tech@cura.lab).');
+    // 8c. Expired token
+    const activeUser = await mongoose.connection.collection('users').findOne({ email: 'tech@cura.lab' });
+    const expiredToken = jwt.sign({ id: activeUser._id }, process.env.JWT_SECRET, { expiresIn: -10 });
+    let expiredRes = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    let expiredNextCalled = false;
+    await protect({ headers: { authorization: `Bearer ${expiredToken}` } }, expiredRes, () => { expiredNextCalled = true; });
+    if (!expiredNextCalled && expiredRes.statusCode === 401 && expiredRes.body?.message === 'Not authenticated.') {
+      console.log('PASS: Expired token rejected with 401 "Not authenticated."');
     } else {
-      console.error('FAIL: Stale demo token failed to authenticate:', staleRes);
+      console.error('FAIL: Expired token was not rejected with 401:', expiredRes);
       failures++;
     }
 
-    // 8d. Valid token with active cura database user
-    const activeUser = await mongoose.connection.collection('users').findOne({ email: 'tech@cura.lab' });
+    // 8d. Invalid signature token
+    const invalidSigToken = jwt.sign({ id: activeUser._id }, 'tampered-signature-secret-key');
+    let invalidSigRes = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    let invalidSigNextCalled = false;
+    await protect({ headers: { authorization: `Bearer ${invalidSigToken}` } }, invalidSigRes, () => { invalidSigNextCalled = true; });
+    if (!invalidSigNextCalled && invalidSigRes.statusCode === 401 && invalidSigRes.body?.message === 'Not authenticated.') {
+      console.log('PASS: Invalid signature token rejected with 401 "Not authenticated."');
+    } else {
+      console.error('FAIL: Invalid signature token was not rejected with 401:', invalidSigRes);
+      failures++;
+    }
+
+    // 8e. Stale token with nonexistent database user ID
+    const nonExistentId = new mongoose.Types.ObjectId();
+    const staleToken = jwt.sign({ id: nonExistentId }, process.env.JWT_SECRET);
+    let staleRes = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    let staleNextCalled = false;
+    await protect({ headers: { authorization: `Bearer ${staleToken}` } }, staleRes, () => { staleNextCalled = true; });
+    if (!staleNextCalled && staleRes.statusCode === 401 && staleRes.body?.message === 'Not authenticated.') {
+      console.log('PASS: Stale token with nonexistent user ID rejected with 401 "Not authenticated."');
+    } else {
+      console.error('FAIL: Stale token was not rejected with 401:', staleRes);
+      failures++;
+    }
+
+    // 8f. Token with malformed ID (non-ObjectId)
+    const malformedIdToken = jwt.sign({ id: 'not-a-valid-oid' }, process.env.JWT_SECRET);
+    let malformedIdRes = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    let malformedIdNextCalled = false;
+    await protect({ headers: { authorization: `Bearer ${malformedIdToken}` } }, malformedIdRes, () => { malformedIdNextCalled = true; });
+    if (!malformedIdNextCalled && malformedIdRes.statusCode === 401 && malformedIdRes.body?.message === 'Not authenticated.') {
+      console.log('PASS: Malformed payload ID rejected with 401 "Not authenticated."');
+    } else {
+      console.error('FAIL: Malformed payload ID was not rejected with 401:', malformedIdRes);
+      failures++;
+    }
+
+    // 8g. Valid token with active cura database user
     const validToken = jwt.sign({ id: activeUser._id, email: activeUser.email }, process.env.JWT_SECRET);
     let validReq = { headers: { authorization: `Bearer ${validToken}` } };
     let validNextCalled = false;
@@ -156,7 +192,68 @@ async function runTests() {
       failures++;
     }
 
-    // Clean up only our synthetic test patient
+    // 8h. Regression: Signup and Login token issuance & acceptance
+    const { signup, login } = await import('../controllers/authController.js');
+    const tempEmail = `regression_runner_${Date.now()}@cura.lab`;
+    let tempUserSignupRes = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    await signup({
+      body: {
+        name: 'Regression Runner',
+        email: tempEmail,
+        password: 'Password123!',
+        role: 'Technician'
+      }
+    }, tempUserSignupRes, (err) => { if (err) throw err; });
+
+    let tempUserId = tempUserSignupRes.body?.user?._id;
+    if (tempUserSignupRes.statusCode === 201 && tempUserSignupRes.body?.token) {
+      console.log('PASS: Signup issued valid token and created user document.');
+      let signupProtectReq = { headers: { authorization: `Bearer ${tempUserSignupRes.body.token}` } };
+      let signupProtectNext = false;
+      let signupProtectRes = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+      await protect(signupProtectReq, signupProtectRes, () => { signupProtectNext = true; });
+      if (signupProtectNext && String(signupProtectReq.user?._id) === String(tempUserId)) {
+        console.log('PASS: Protect middleware accepted newly issued signup token.');
+      } else {
+        console.error('FAIL: Protect middleware rejected signup token.');
+        failures++;
+      }
+    } else {
+      console.error('FAIL: Signup failed:', tempUserSignupRes.statusCode);
+      failures++;
+    }
+
+    // Test Login with the created account
+    let tempUserLoginRes = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+    await login({
+      body: {
+        email: tempEmail,
+        password: 'Password123!'
+      }
+    }, tempUserLoginRes, (err) => { if (err) throw err; });
+
+    if (tempUserLoginRes.statusCode === 200 && tempUserLoginRes.body?.token) {
+      console.log('PASS: Login issued valid token.');
+      let loginProtectReq = { headers: { authorization: `Bearer ${tempUserLoginRes.body.token}` } };
+      let loginProtectNext = false;
+      let loginProtectRes = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; } };
+      await protect(loginProtectReq, loginProtectRes, () => { loginProtectNext = true; });
+      if (loginProtectNext && String(loginProtectReq.user?._id) === String(tempUserId)) {
+        console.log('PASS: Protect middleware accepted newly issued login token.');
+      } else {
+        console.error('FAIL: Protect middleware rejected login token.');
+        failures++;
+      }
+    } else {
+      console.error('FAIL: Login failed:', tempUserLoginRes.statusCode);
+      failures++;
+    }
+
+    // Clean up temporary user & patient
+    if (tempUserId) {
+      await mongoose.connection.collection('users').deleteOne({ _id: tempUserId });
+      console.log('PASS: Cleaned up temporary test user.');
+    }
     await mongoose.connection.collection('patients').deleteOne({ patientId: syntheticCode });
     console.log(`PASS: Cleaned up temporary synthetic test patient ${syntheticCode}.`);
 

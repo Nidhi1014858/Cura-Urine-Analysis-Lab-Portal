@@ -46,11 +46,12 @@ The application isolates all backend communication behind an asynchronous servic
 - [`src/services/predictionEngine.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/predictionEngine.js): Stand-in non-linear regression model computing values, units, reference ranges, flags, and confidence scores from pad RGB triplets.
 - [`src/services/seedData.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/seedData.js): Pre-populates realistic seed data on first run.
 
-### Swapping for a Real Backend API
-To connect to a live backend (Express/MongoDB or REST/GraphQL):
-1. Keep component imports pointing to `mockApi.js`.
-2. Replace `localStorage` operations in `mockApi.js` with `fetch` or `axios` calls pointing to your API endpoints.
-3. No React UI components require modification.
+### Live Backend & Mock Mode Architecture
+The application features a seamless dual-mode architecture controlled by the environment:
+
+- **Live Backend (`VITE_USE_MOCK=false` / default)**: The centralized [`src/services/apiClient.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/apiClient.js) and [`src/services/api.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/api.js) route requests to the Node.js/Express + Mongoose backend (`http://localhost:5000`) via the Vite `/api` proxy. All auth, patient records, test submissions, batch summaries, and dashboard statistics persist to MongoDB Atlas.
+- **Offline Mock Mode (`VITE_USE_MOCK=true`)**: Routes requests to [`src/services/localApi.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/localApi.js) using browser `localStorage` and simulated network delay.
+- The adapter in [`src/services/mockApi.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/mockApi.js) ensures that UI components never need code changes when toggling between live backend and mock mode.
 
 ---
 
@@ -59,21 +60,34 @@ To connect to a live backend (Express/MongoDB or REST/GraphQL):
 ### Prerequisites
 - Node.js (v18+)
 - npm
+- MongoDB Atlas cluster or local MongoDB instance
 
 ### Installation & Running Locally
 
-1. Install dependencies:
+1. Install all dependencies (frontend and backend):
    ```bash
-   npm install
+   npm run install:all
    ```
 
-2. Start the development server:
+2. Configure environment files:
+   - Frontend: create `.env` from `.env.example` (`VITE_USE_MOCK=false`).
+   - Backend: create `server/.env` from `server/.env.example` (`PORT=5000`, `MONGO_URI=<your-mongodb-uri>`, `JWT_SECRET=<your-secret>`).
+
+3. Start both frontend and backend concurrently:
    ```bash
+   npm run dev:all
+   ```
+   Or start them in separate terminals:
+   ```bash
+   # Terminal 1: Backend API (port 5000)
+   npm run server
+
+   # Terminal 2: React Frontend (port 3000)
    npm run dev
    ```
    Open `http://localhost:3000` in your browser.
 
-3. Build production bundle:
+4. Build production bundle:
    ```bash
    npm run build
    ```

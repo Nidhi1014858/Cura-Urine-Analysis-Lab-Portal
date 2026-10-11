@@ -5,6 +5,8 @@ import { StatusBadge, PanelBadge } from '../components/common/Badge';
 import { ReviewModal } from '../components/review/ReviewModal';
 import { formatDate } from '../utils/formatters';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { 
   CheckSquare, 
   AlertTriangle, 
@@ -12,29 +14,48 @@ import {
   UserCheck, 
   ArrowRight,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 export function ReviewQueuePage() {
   const navigate = useNavigate();
+  const { user, isClinician } = useAuth();
+  const { addToast } = useToast();
   const { refreshPendingCount } = useOutletContext() || {};
+
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filterAbnormalOnly, setFilterAbnormalOnly] = useState(false);
   const [selectedTest, setSelectedTest] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   const loadQueue = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const stats = await mockApi.getDashboardStats();
-      let list = stats.pendingReviewQueue || [];
-      if (filterAbnormalOnly) {
-        list = list.filter(t => t.overallStatus === 'abnormal');
-      }
+      const filters = {
+        reviewStatus: 'pending',
+        ...(filterAbnormalOnly ? { overallStatus: 'abnormal' } : {})
+      };
+
+      const data = await mockApi.getTests(filters);
+      let list = Array.isArray(data) ? [...data] : [];
+
+      // Sort abnormal findings first, then newest first
+      list.sort((a, b) => {
+        if (a.overallStatus === 'abnormal' && b.overallStatus !== 'abnormal') return -1;
+        if (a.overallStatus !== 'abnormal' && b.overallStatus === 'abnormal') return 1;
+        return new Date(b.submittedAt) - new Date(a.submittedAt);
+      });
+
       setQueue(list);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load review queue', err);
+      setError(err?.message || 'Failed to load review queue.');
+      setQueue([]);
     } finally {
       setLoading(false);
     }
@@ -46,14 +67,30 @@ export function ReviewQueuePage() {
 
   const handleOpenReview = (test, e) => {
     e.stopPropagation();
+    if (!isClinician) {
+      addToast('Only Clinicians have permission to review reports.', 'error');
+      return;
+    }
     setSelectedTest(test);
     setIsReviewModalOpen(true);
   };
 
   const handleReviewSubmitted = async (testId, reviewData) => {
-    await mockApi.updateClinicianReview(testId, reviewData);
-    await loadQueue();
-    if (refreshPendingCount) refreshPendingCount();
+    if (!isClinician) {
+      addToast('Only Clinicians have permission to review reports.', 'error');
+      return;
+    }
+    try {
+      await mockApi.updateClinicianReview(testId, {
+        status: reviewData.status,
+        notes: reviewData.notes
+      });
+      await loadQueue();
+      if (refreshPendingCount) refreshPendingCount();
+    } catch (err) {
+      console.error('Failed to submit review', err);
+      throw err;
+    }
   };
 
   return (
@@ -98,6 +135,22 @@ export function ReviewQueuePage() {
         </div>
       </div>
 
+      {/* Error State Banner */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={loadQueue}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <LoadingSpinner text="Loading review worklist..." />
       ) : queue.length === 0 ? (
@@ -116,8 +169,8 @@ export function ReviewQueuePage() {
             const isAbnormal = test.overallStatus === 'abnormal';
             return (
               <div
-                key={test.id}
-                onClick={() => navigate(`/reports/${test.id}`)}
+                key={test.id || test._id || test.testCode}
+                onClick={() => navigate(`/reports/${test.id || test._id || test.testCode}`)}
                 className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm hover:shadow-md ${
                   isAbnormal
                     ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/60 hover:border-rose-300'
@@ -157,17 +210,19 @@ export function ReviewQueuePage() {
 
                 {/* Review Action Buttons */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={(e) => handleOpenReview(test, e)}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all"
-                  >
-                    <UserCheck className="w-4 h-4" /> Review & Approve
-                  </button>
+                  {isClinician && (
+                    <button
+                      onClick={(e) => handleOpenReview(test, e)}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all"
+                    >
+                      <UserCheck className="w-4 h-4" /> Review & Approve
+                    </button>
+                  )}
 
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/reports/${test.id}`);
+                      navigate(`/reports/${test.id || test._id || test.testCode}`);
                     }}
                     className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition-colors"
                     title="View Full Report Detail"

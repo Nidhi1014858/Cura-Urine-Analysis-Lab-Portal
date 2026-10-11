@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'cura_token';
+import { apiClient } from './apiClient';
 
 function buildQuery(filters = {}) {
   const params = new URLSearchParams();
@@ -10,6 +10,8 @@ function buildQuery(filters = {}) {
   const query = params.toString();
   return query ? `?${query}` : '';
 }
+
+const TOKEN_KEY = 'cura_token';
 
 async function request(path, { method = 'GET', body, headers = {}, token: explicitToken } = {}) {
   const rawToken = explicitToken || localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token');
@@ -40,100 +42,25 @@ async function request(path, { method = 'GET', body, headers = {}, token: explic
 }
 
 export const api = {
-  async login(email, password) {
-    const data = await request('/auth/login', {
-      method: 'POST',
-      body: { email, password }
-    });
-    localStorage.setItem(TOKEN_KEY, data.token);
-    return data.user;
-  },
+  login: (email, password) => apiClient.login(email, password),
+  signup: (userData) => apiClient.signup(userData),
+  logout: () => apiClient.logout(),
+  getCurrentUser: () => apiClient.getCurrentUser(),
+  updateProfile: (userId, updates) => apiClient.updateProfile(userId, updates),
+  changePassword: (userId, currentPassword, newPassword) => apiClient.changePassword(userId, currentPassword, newPassword),
+  getPatients: (filters) => apiClient.getPatients(filters),
+  getPatientById: (id) => apiClient.getPatientById(id),
+  createPatient: (data) => apiClient.createPatient(data),
 
-  async signup(userData) {
-    const data = await request('/auth/signup', {
-      method: 'POST',
-      body: userData
-    });
-    localStorage.setItem(TOKEN_KEY, data.token);
-    return data.user;
-  },
+  // Test routes connected to apiClient
+  getTests: (filters) => apiClient.getTests(filters),
+  getTestById: (id) => apiClient.getTestById(id),
+  createTest: (data) => apiClient.createTest(data),
+  updateClinicianReview: (id, reviewData) => apiClient.updateClinicianReview(id, reviewData),
+  getBatchSummary: (batch) => apiClient.getBatchSummary(batch),
 
-  async logout() {
-    localStorage.removeItem(TOKEN_KEY);
-    return true;
-  },
-
-  async getCurrentUser() {
-    if (!localStorage.getItem(TOKEN_KEY)) {
-      return null;
-    }
-
-    try {
-      return await request('/auth/me');
-    } catch (error) {
-      if (error.status === 401) {
-        return null;
-      }
-      throw error;
-    }
-  },
-
-  async updateProfile(userId, updates) {
-    return request(`/users/${encodeURIComponent(userId)}`, {
-      method: 'PATCH',
-      body: updates
-    });
-  },
-
-  async changePassword(userId, currentPassword, newPassword) {
-    return request('/auth/password', {
-      method: 'PATCH',
-      body: { currentPassword, newPassword }
-    });
-  },
-
-  async getTests(filters = {}) {
-    return request(`/tests${buildQuery(filters)}`);
-  },
-
-  async getTestById(id) {
-    return request(`/tests/${encodeURIComponent(id)}`);
-  },
-
-  async createTest(data) {
-    return request('/tests', {
-      method: 'POST',
-      body: data
-    });
-  },
-
-  async updateClinicianReview(id, { status, notes }) {
-    return request(`/tests/${encodeURIComponent(id)}/review`, {
-      method: 'PATCH',
-      body: { status, notes }
-    });
-  },
-
-  async getBatchSummary(batch) {
-    return request(`/tests/batches/${encodeURIComponent(batch)}`);
-  },
-
-  async getPatients(filters = {}) {
-    return request(`/patients${buildQuery(filters)}`);
-  },
-
-  async getPatientById(id) {
-    return request(`/patients/${encodeURIComponent(id)}`);
-  },
-
-  async createPatient(data) {
-    return request('/patients', {
-      method: 'POST',
-      body: data
-    });
-  },
-
-  async getDashboardStats() {
-    return request('/stats/dashboard');
-  }
+  // Dashboard stats connected to apiClient
+  getDashboardStats: () => apiClient.getDashboardStats()
 };
+
+export default api;

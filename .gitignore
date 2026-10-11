@@ -4,3 +4,4 @@ server/.env
 .vite/
 *.timestamp-*.mjs
 dist
+powershell.bat
