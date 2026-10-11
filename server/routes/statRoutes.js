@@ -1,10 +1,9 @@
-// Teammate: Surbhi replaces this file
 import { Router } from 'express';
+import { protect } from '../middleware/auth.js';
+import { getDashboardStats } from '../controllers/statController.js';
 
 const router = Router();
 
-router.all('*', (req, res) => {
-  res.status(501).json({ message: 'Not implemented yet' });
-});
+router.get('/dashboard', protect, getDashboardStats);
 
 export default router;

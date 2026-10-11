@@ -5,8 +5,9 @@ import { nextCode } from '../utils/codes.js';
 export const getPatients = async (req, res, next) => {
   try {
     let query = {};
-    if (req.query.search) {
-      const escaped = req.query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const search = req.query.search;
+    if (typeof search === 'string' && search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escaped, 'i');
       query = {
         $or: [
@@ -58,9 +59,7 @@ export const getPatientById = async (req, res, next) => {
     let patient;
     if (mongoose.isValidObjectId(id)) {
       patient = await Patient.findById(id);
-    }
-    
-    if (!patient) {
+    } else if (/^PAT-\d{4}-\d{4}$/.test(id)) {
       patient = await Patient.findOne({ patientId: id });
     }
 

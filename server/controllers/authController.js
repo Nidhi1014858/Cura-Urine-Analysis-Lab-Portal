@@ -9,6 +9,11 @@ const signToken = (id) => {
   });
 };
 
+const isDuplicateEmail = (error) => (
+  error.code === 11000 &&
+  (error.keyPattern?.email || error.keyValue?.email)
+);
+
 export const signup = async (req, res, next) => {
   try {
     const { name, email, password, role, designation, department } = req.body;
@@ -17,12 +22,16 @@ export const signup = async (req, res, next) => {
       return res.status(400).json({ message: 'Please provide name, email, and password.' });
     }
 
+    if (role !== undefined && !['Technician', 'Clinician'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be Technician or Clinician.' });
+    }
+
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(409).json({ message: 'An account with this email already exists.' });
     }
 
-    const userRole = role === 'Clinician' ? 'Clinician' : 'Technician';
+    const userRole = role || 'Technician';
     const defaultDesignation = designation || (userRole === 'Clinician' ? 'Consultant Pathologist' : 'POCT Technician');
     const defaultDepartment = department || 'Clinical Pathology';
 
@@ -44,6 +53,9 @@ export const signup = async (req, res, next) => {
       user
     });
   } catch (error) {
+    if (isDuplicateEmail(error)) {
+      return res.status(409).json({ message: 'An account with this email already exists.' });
+    }
     next(error);
   }
 };
@@ -156,6 +168,9 @@ export const updateProfile = async (req, res, next) => {
 
     res.json(user);
   } catch (error) {
+    if (isDuplicateEmail(error)) {
+      return res.status(409).json({ message: 'An account with this email already exists.' });
+    }
     next(error);
   }
 };
