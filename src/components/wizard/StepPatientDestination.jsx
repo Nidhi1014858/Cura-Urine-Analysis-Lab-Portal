@@ -142,7 +142,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
           <button
             type="button"
             onClick={() => {
-              setCreateError(null);
+              setModalError('');
               setIsAddModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-semibold border border-teal-200 dark:border-teal-800 hover:bg-teal-100 transition-colors"

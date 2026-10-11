@@ -15,6 +15,7 @@ export function SignupPage() {
     email: '',
     password: '',
     role: 'Technician',
+    clinicianCode: '',
     designation: '',
     department: 'Point-of-Care Testing (POCT)'
   });
@@ -24,7 +25,16 @@ export function SignupPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await signup(formData);
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        designation: formData.designation,
+        department: formData.department,
+        ...(formData.role === 'Clinician' ? { clinicianCode: formData.clinicianCode } : {})
+      };
+      await signup(payload);
       addToast('Account created successfully!', 'success');
       navigate('/dashboard');
     } catch (err) {
@@ -48,7 +58,7 @@ export function SignupPage() {
         <div className="bg-slate-800/80 p-1 rounded-2xl border border-slate-700/80 grid grid-cols-2 gap-1 text-xs">
           <button
             type="button"
-            onClick={() => setFormData({ ...formData, role: 'Technician' })}
+            onClick={() => setFormData({ ...formData, role: 'Technician', clinicianCode: '' })}
             className={`py-2 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
               formData.role === 'Technician'
                 ? 'bg-teal-600 text-white shadow-md'
@@ -117,6 +127,23 @@ export function SignupPage() {
               className="w-full px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-800/90 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
             />
           </div>
+
+          {formData.role === 'Clinician' && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-teal-300">Authorization Code *</label>
+                <span className="text-[10px] text-slate-400">Required for Clinician review role</span>
+              </div>
+              <input
+                type="password"
+                required
+                value={formData.clinicianCode}
+                onChange={(e) => setFormData({ ...formData, clinicianCode: e.target.value })}
+                placeholder="Enter clinician authorization code"
+                className="w-full px-3.5 py-2 rounded-xl border border-teal-600/70 bg-slate-800/90 text-sm text-white focus:ring-2 focus:ring-teal-500 outline-none"
+              />
+            </div>
+          )}
 
           <button
             type="submit"

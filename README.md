@@ -42,16 +42,16 @@
 
 The application isolates all backend communication behind an asynchronous service layer:
 
-- [`src/services/mockApi.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/mockApi.js): Simulates a MongoDB-shaped database using `localStorage` (`cura_tests`, `cura_patients`, `cura_users`, `cura_session`).
-- [`src/services/predictionEngine.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/predictionEngine.js): Stand-in non-linear regression model computing values, units, reference ranges, flags, and confidence scores from pad RGB triplets.
-- [`src/services/seedData.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/seedData.js): Pre-populates realistic seed data on first run.
+- [`src/services/mockApi.js`](src/services/mockApi.js): Simulates a MongoDB-shaped database using `localStorage` (`cura_tests`, `cura_patients`, `cura_users`, `cura_session`).
+- [`src/services/predictionEngine.js`](src/services/predictionEngine.js): Stand-in non-linear regression model computing values, units, reference ranges, flags, and confidence scores from pad RGB triplets.
+- [`src/services/seedData.js`](src/services/seedData.js): Pre-populates realistic seed data on first run.
 
 ### Live Backend & Mock Mode Architecture
 The application features a seamless dual-mode architecture controlled by the environment:
 
-- **Live Backend (`VITE_USE_MOCK=false` / default)**: The centralized [`src/services/apiClient.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/apiClient.js) and [`src/services/api.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/api.js) route requests to the Node.js/Express + Mongoose backend (`http://localhost:5000`) via the Vite `/api` proxy. All auth, patient records, test submissions, batch summaries, and dashboard statistics persist to MongoDB Atlas.
-- **Offline Mock Mode (`VITE_USE_MOCK=true`)**: Routes requests to [`src/services/localApi.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/localApi.js) using browser `localStorage` and simulated network delay.
-- The adapter in [`src/services/mockApi.js`](file:///d:/Nidhi%20-%20College/Sem%205/uristrip-lab-portal/src/services/mockApi.js) ensures that UI components never need code changes when toggling between live backend and mock mode.
+- **Live Backend (`VITE_USE_MOCK=false` / default)**: The centralized [`src/services/apiClient.js`](src/services/apiClient.js) and [`src/services/api.js`](src/services/api.js) route requests to the Node.js/Express + Mongoose backend (`http://localhost:5000`) via the Vite `/api` proxy. All auth, patient records, test submissions, batch summaries, and dashboard statistics persist to MongoDB Atlas.
+- **Offline Mock Mode (`VITE_USE_MOCK=true`)**: Routes requests to [`src/services/localApi.js`](src/services/localApi.js) using browser `localStorage` and simulated network delay.
+- The adapter in [`src/services/mockApi.js`](src/services/mockApi.js) ensures that UI components never need code changes when toggling between live backend and mock mode.
 
 ---
 

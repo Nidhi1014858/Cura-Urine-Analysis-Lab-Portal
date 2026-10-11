@@ -11,6 +11,8 @@ import testRoutes from './routes/testRoutes.js';
 import statRoutes from './routes/statRoutes.js';
 import { seedIfEmpty } from './seed/seedRunner.js';
 
+import { createCorsOptions } from './config/corsConfig.js';
+
 if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
   console.error('ERROR: MONGO_URI and JWT_SECRET environment variables are required.');
   process.exit(1);
@@ -19,7 +21,7 @@ if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors(createCorsOptions()));
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (req, res) => {

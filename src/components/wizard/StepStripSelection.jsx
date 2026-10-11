@@ -2,12 +2,13 @@ import React from 'react';
 import { Layers, Sparkles, CheckCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { STRIP_BRANDS } from '../../services/seedData';
 import { PANEL_10_KEYS, PANEL_14_KEYS } from '../../services/predictionEngine';
+import { getTodayIST } from '../../utils/formatters';
 
 export function StepStripSelection({ formData, updateFormData, onNext, onPrev }) {
   const currentPanel = formData.panelType || '10-panel';
 
-  // Batch traceability validation logic
-  const today = new Date().toISOString().slice(0, 10);
+  // Batch traceability validation logic using Asia/Kolkata calendar date
+  const today = getTodayIST();
   const expired = formData.expiryDate && formData.expiryDate < today;
   const manufactureFuture = formData.manufactureDate && formData.manufactureDate > today;
   const manufactureAfterExpiry = formData.manufactureDate && formData.expiryDate && formData.manufactureDate > formData.expiryDate;

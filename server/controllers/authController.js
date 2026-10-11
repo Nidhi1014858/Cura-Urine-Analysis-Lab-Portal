@@ -16,13 +16,22 @@ const isDuplicateEmail = (error) => (
 
 export const signup = async (req, res, next) => {
   try {
-    const { name, email, password, role, designation, department } = req.body;
+    const { name, email, password, role, designation, department, clinicianCode } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Please provide name, email, and password.' });
     }
 
-    if (role !== undefined && !['Technician', 'Clinician'].includes(role)) {
+    let userRole = 'Technician';
+    if (role === 'Clinician') {
+      const inviteCode = process.env.CLINICIAN_INVITE_CODE;
+      if (!inviteCode || clinicianCode !== inviteCode) {
+        return res.status(403).json({
+          message: 'Clinician registration requires a valid authorization invite code.'
+        });
+      }
+      userRole = 'Clinician';
+    } else if (role !== undefined && role !== 'Technician') {
       return res.status(400).json({ message: 'Role must be Technician or Clinician.' });
     }
 
@@ -31,7 +40,6 @@ export const signup = async (req, res, next) => {
       return res.status(409).json({ message: 'An account with this email already exists.' });
     }
 
-    const userRole = role || 'Technician';
     const defaultDesignation = designation || (userRole === 'Clinician' ? 'Consultant Pathologist' : 'POCT Technician');
     const defaultDepartment = department || 'Clinical Pathology';
 

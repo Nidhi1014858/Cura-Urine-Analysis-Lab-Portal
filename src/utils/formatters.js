@@ -24,6 +24,21 @@ export function formatShortDate(dateString) {
   }).format(d);
 }
 
+/**
+ * Returns the calendar date in Asia/Kolkata (IST) timezone formatted as YYYY-MM-DD.
+ * @param {Date} [date=new Date()]
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+export function getTodayIST(date = new Date()) {
+  const d = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(d);
+}
+
 export function getStatusBadgeStyle(status) {
   switch (status) {
     case 'abnormal':

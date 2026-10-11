@@ -62,7 +62,7 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
   }
 
   const contentType = res.headers.get('content-type') || '';
-  let data = null;
+  let data;
 
   if (contentType.includes('application/json')) {
     data = await res.json().catch(() => null);

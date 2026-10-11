@@ -19,6 +19,10 @@ JWT_SECRET=change-this-to-a-long-random-string
 JWT_EXPIRES_IN=7d
 # Optional, only if Atlas DNS lookup times out:
 # DNS_SERVERS=8.8.8.8,1.1.1.1
+# Optional: Comma-separated allowed frontend origins (defaults to localhost:3000, 127.0.0.1:3000)
+# CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+# Optional: Authorization code required to register as Clinician via public signup
+# CLINICIAN_INVITE_CODE=your-clinician-invite-code
 ```
 
 Start the frontend and backend together:
@@ -79,3 +83,24 @@ Offline demo mode:
 ```bash
 VITE_USE_MOCK=true npm run dev
 ```
+
+## Security Configuration
+
+### Clinician Role Provisioning & Invite Code
+- Public user registration (`POST /api/auth/signup`) defaults to the `Technician` role when no role or `Technician` is requested.
+- Clinician privileges grant access to clinical reviews, verification queues, and test sign-offs.
+- To permit Clinician registration, specify an invite code in `server/.env`:
+  ```bash
+  CLINICIAN_INVITE_CODE=your-secret-invite-code
+  ```
+- Public signups requesting `role: "Clinician"` must supply the matching `clinicianCode`. If missing or invalid, the API rejects the registration with HTTP 403 Forbidden.
+- The invite code is never stored in the database, returned in API responses, or logged.
+- Pre-seeded evaluation accounts (`clinician@cura.lab`) are already provisioned and do not require invite codes for login.
+
+### CORS Configuration
+- By default, the API accepts cross-origin requests from standard local development origins (`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, `http://127.0.0.1:5173`) and headless non-browser tools (`!origin`).
+- To authorize additional frontend domains, set a comma-separated list in `server/.env`:
+  ```bash
+  CORS_ORIGINS=https://portal.example.com,https://staging.example.com
+  ```
+- Disallowed browser origins are rejected by CORS middleware. Note that CORS is a browser-enforced policy and does not replace endpoint authentication; all protected routes authoritatively require verified JWT Bearer tokens and role checks.
