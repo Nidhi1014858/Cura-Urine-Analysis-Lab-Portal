@@ -26,8 +26,36 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
   const overallFlag = hasAbnormal ? 'abnormal' : (hasTrace ? 'trace' : 'normal');
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    if (!formData.patientId) {
+      addToast('Please select a target patient before submitting.', 'error');
+      return;
+    }
+
+    if (!formData.reportDestination) {
+      addToast('Please select a pathology report destination.', 'error');
+      return;
+    }
+
+    if (!formData.stripBatch || !formData.manufactureDate || !formData.expiryDate) {
+      addToast('Strip batch number, manufacture date, and expiry date are required.', 'error');
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (formData.expiryDate < today) {
+      addToast(`This strip batch expired on ${formData.expiryDate}. Testing with an expired strip is blocked.`, 'error');
+      return;
+    }
+
+    if (formData.manufactureDate > today || formData.manufactureDate > formData.expiryDate) {
+      addToast('Manufacture date must not be in the future or after expiry date.', 'error');
+      return;
+    }
+
     if (!hasCompleteReadings) {
-      addToast('Enter complete RGB readings before submitting.', 'error');
+      addToast('Enter complete RGB readings for all reagent pads before submitting.', 'error');
       return;
     }
 
@@ -44,16 +72,17 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
         expiryDate: formData.expiryDate,
         reportDestination: formData.reportDestination,
         stripImageUrl: formData.stripImageUrl,
-        submittedBy: user?.name || 'Ananya Deshmukh',
+        submittedBy: user?.name || 'Technician',
         submittedByPhotoUrl: user?.photoUrl || null,
         technicianNotes: formData.technicianNotes || '',
         analytes: predictedList
       });
 
-      addToast(`Test report ${created.testCode} submitted successfully! Auto-queued for clinician review.`, 'success');
-      navigate(`/reports/${created.id}`);
+      const reportId = created?.id || created?._id || created?.testCode;
+      addToast(`Test report ${created?.testCode || ''} submitted successfully! Auto-queued for clinician review.`, 'success');
+      navigate(`/reports/${reportId}`);
     } catch (err) {
-      addToast(err.message || 'Failed to submit test', 'error');
+      addToast(err?.message || 'Failed to submit test report', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -86,9 +115,9 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
           <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-slate-400">Target Patient</span>
           <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
             <User className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            {formData.patientName}
+            {formData.patientName || 'None selected'}
           </p>
-          <p className="text-xs font-mono text-slate-500">ID: {formData.patientCode}</p>
+          <p className="text-xs font-mono text-slate-500">ID: {formData.patientCode || '—'}</p>
         </div>
 
         {/* Destination & Strip */}
@@ -102,7 +131,7 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
             <PanelBadge type={formData.panelType} />
             <span className="text-[11px] text-slate-500 font-medium">{formData.stripBrand}</span>
           </div>
-          <p className="text-[11px] text-slate-500">Batch {formData.stripBatch} · Mfg {formData.manufactureDate} · Exp {formData.expiryDate}</p>
+          <p className="text-[11px] text-slate-500">Batch {formData.stripBatch || '—'} · Mfg {formData.manufactureDate || '—'} · Exp {formData.expiryDate || '—'}</p>
         </div>
 
         {/* Overall Status Banner */}

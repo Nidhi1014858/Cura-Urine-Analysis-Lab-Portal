@@ -23,7 +23,7 @@ export function ReviewModal({ isOpen, onClose, test, onReviewSubmitted }) {
 
     try {
       const reviewerName = user?.name || 'Dr. Reviewer';
-      await onReviewSubmitted(test.id, {
+      await onReviewSubmitted(test.id || test._id || test.testCode, {
         status: decision,
         notes,
         reviewerName,

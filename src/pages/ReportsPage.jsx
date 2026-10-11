@@ -140,8 +140,8 @@ export function ReportsPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs font-mono">
                 {tests.map((t) => (
                   <tr
-                    key={t.id}
-                    onClick={() => navigate(`/reports/${t.id}`)}
+                    key={t.id || t._id || t.testCode}
+                    onClick={() => navigate(`/reports/${t.id || t._id || t.testCode}`)}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 cursor-pointer transition-colors"
                   >
                     <td className="py-3.5 px-4 font-bold text-teal-600 dark:text-teal-400">
@@ -174,7 +174,7 @@ export function ReportsPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/reports/${t.id}`);
+                          navigate(`/reports/${t.id || t._id || t.testCode}`);
                         }}
                         className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-teal-950 text-slate-700 dark:text-slate-300 hover:text-teal-700 dark:hover:text-teal-300 font-semibold transition-colors"
                       >

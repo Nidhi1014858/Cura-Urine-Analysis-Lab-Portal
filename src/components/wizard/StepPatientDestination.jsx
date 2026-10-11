@@ -18,10 +18,17 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
     address: ''
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modalError, setModalError] = useState('');
+
   useEffect(() => {
     async function loadPatients() {
-      const list = await mockApi.getPatients();
-      setPatients(list);
+      try {
+        const list = await mockApi.getPatients();
+        setPatients(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error('Failed to load patients for wizard', err);
+      }
     }
     loadPatients();
   }, []);
@@ -29,7 +36,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
   const filteredPatients = patients.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.patientId.toLowerCase().includes(search.toLowerCase()) ||
-    p.phone.includes(search)
+    (p.phone && p.phone.includes(search))
   );
 
   const handleSelectPatient = (patient) => {
@@ -42,14 +49,44 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
 
   const handleCreatePatient = async (e) => {
     e.preventDefault();
-    if (!newPatient.name) return;
-    const created = await mockApi.createPatient({
-      ...newPatient,
-      age: Number(newPatient.age) || 30
-    });
-    setPatients(prev => [created, ...prev]);
-    handleSelectPatient(created);
-    setIsAddModalOpen(false);
+    if (isSubmitting) return;
+
+    if (!newPatient.name.trim()) {
+      setModalError('Patient name is required.');
+      return;
+    }
+
+    const ageNum = Number(newPatient.age);
+    if (!newPatient.age || isNaN(ageNum) || ageNum < 0 || ageNum > 150) {
+      setModalError('Age must be a valid number between 0 and 150.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setModalError('');
+    try {
+      const created = await mockApi.createPatient({
+        ...newPatient,
+        name: newPatient.name.trim(),
+        age: ageNum
+      });
+      setPatients(prev => [created, ...prev]);
+      handleSelectPatient(created);
+      setIsAddModalOpen(false);
+      setNewPatient({
+        name: '',
+        age: '',
+        gender: 'Male',
+        phone: '',
+        email: '',
+        bloodGroup: 'B+',
+        address: ''
+      });
+    } catch (err) {
+      setModalError(err?.message || 'Failed to register patient.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -189,29 +226,37 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
       </div>
 
       {/* Add New Patient Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Register New Patient">
+      <Modal isOpen={isAddModalOpen} onClose={() => !isSubmitting && setIsAddModalOpen(false)} title="Register New Patient">
         <form onSubmit={handleCreatePatient} className="space-y-4">
+          {modalError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs">
+              {modalError}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Full Name *</label>
               <input
                 type="text"
                 required
                 value={newPatient.name}
                 onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
                 placeholder="e.g. Priya Sharma"
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Age</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Age *</label>
               <input
                 type="number"
                 required
+                min="0"
+                max="150"
                 value={newPatient.age}
                 onChange={(e) => setNewPatient({ ...newPatient, age: e.target.value })}
                 placeholder="e.g. 34"
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
           </div>
@@ -222,7 +267,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
               <select
                 value={newPatient.gender}
                 onChange={(e) => setNewPatient({ ...newPatient, gender: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -236,7 +281,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
                 value={newPatient.phone}
                 onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
                 placeholder="+91 98200..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
             <div>
@@ -244,7 +289,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
               <select
                 value={newPatient.bloodGroup}
                 onChange={(e) => setNewPatient({ ...newPatient, bloodGroup: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               >
                 <option value="A+">A+</option>
                 <option value="B+">B+</option>
@@ -258,16 +303,18 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
           <div className="flex justify-end gap-3 pt-3">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-teal-600 text-white font-semibold text-xs shadow-md shadow-teal-600/20"
+              disabled={isSubmitting}
+              className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs shadow-md shadow-teal-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              Save Patient & Select
+              {isSubmitting ? 'Saving...' : 'Save Patient & Select'}
             </button>
           </div>
         </form>
