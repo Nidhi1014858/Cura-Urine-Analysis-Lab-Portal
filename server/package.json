@@ -4,7 +4,7 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev": "node --watch-path=server.js --watch-path=config --watch-path=controllers --watch-path=middleware --watch-path=models --watch-path=routes --watch-path=seed --watch-path=utils server.js",
     "start": "node server.js"
   },
   "dependencies": {
