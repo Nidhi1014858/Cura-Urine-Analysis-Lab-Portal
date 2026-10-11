@@ -28,17 +28,27 @@ export const getPatients = async (req, res, next) => {
 export const createPatient = async (req, res, next) => {
   try {
     const { name, age, gender, phone, email, bloodGroup, address } = req.body;
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const numAge = Number(age);
 
-    if (!name || age === undefined || age === null) {
-      return res.status(400).json({ message: 'Name and age are required.' });
+    if (!trimmedName || age === undefined || age === null || isNaN(numAge) || numAge < 0) {
+      return res.status(400).json({ message: 'Name and a valid age are required.' });
     }
 
-    const patientId = await nextCode('PAT');
+    let patientId = req.body.patientId;
+    if (patientId) {
+      const existing = await Patient.findOne({ patientId });
+      if (existing) {
+        return res.status(409).json({ message: 'Patient with this ID already exists.' });
+      }
+    } else {
+      patientId = await nextCode('PAT');
+    }
 
     const patient = await Patient.create({
       patientId,
-      name,
-      age: Number(age),
+      name: trimmedName,
+      age: numAge,
       gender,
       phone,
       email,

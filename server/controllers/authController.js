@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 
-const signToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const signToken = (id, email) => {
+  return jwt.sign({ id, ...(email && { email }) }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   });
 };
@@ -46,7 +46,7 @@ export const signup = async (req, res, next) => {
       department: defaultDepartment
     });
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.email);
 
     res.status(201).json({
       token,
@@ -78,7 +78,7 @@ export const login = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid password.' });
     }
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.email);
 
     res.json({
       token,

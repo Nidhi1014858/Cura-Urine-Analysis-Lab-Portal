@@ -11,13 +11,15 @@ function buildQuery(filters = {}) {
   return query ? `?${query}` : '';
 }
 
-async function request(path, { method = 'GET', body } = {}) {
-  const token = localStorage.getItem(TOKEN_KEY);
+async function request(path, { method = 'GET', body, headers = {}, token: explicitToken } = {}) {
+  const rawToken = explicitToken || localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token');
+  const token = rawToken ? String(rawToken).replace(/^["']|["']$/g, '').trim() : null;
   const res = await fetch(`/api${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` })
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers
     },
     body: body ? JSON.stringify(body) : undefined
   });
@@ -27,6 +29,7 @@ async function request(path, { method = 'GET', body } = {}) {
   if (!res.ok) {
     if (res.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('token');
     }
     const error = new Error(data?.message || 'Request failed');
     error.status = res.status;
