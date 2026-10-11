@@ -28,7 +28,9 @@ async function request(path, { method = 'GET', body } = {}) {
     if (res.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
     }
-    throw new Error(data?.message || `Request failed (${res.status})`);
+    const error = new Error(data?.message || 'Request failed');
+    error.status = res.status;
+    throw error;
   }
 
   return data;
@@ -66,7 +68,7 @@ export const api = {
     try {
       return await request('/auth/me');
     } catch (error) {
-      if (error.message.includes('401') || !localStorage.getItem(TOKEN_KEY)) {
+      if (error.status === 401) {
         return null;
       }
       throw error;

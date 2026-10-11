@@ -6,17 +6,27 @@ import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from '../../src/services/seedDa
 
 export async function seedIfEmpty() {
   const userCount = await User.countDocuments();
+
+  await Promise.all(
+    MOCK_USERS.map(async ({ id, password, ...user }) => {
+      const email = user.email.toLowerCase();
+      await User.updateOne(
+        { email },
+        {
+          $setOnInsert: {
+            ...user,
+            email,
+            password: await bcrypt.hash(password, 10)
+          }
+        },
+        { upsert: true }
+      );
+    })
+  );
+
   if (userCount > 0) {
     return;
   }
-
-  const users = await Promise.all(
-    MOCK_USERS.map(async ({ id, password, ...user }) => ({
-      ...user,
-      password: await bcrypt.hash(password, 10)
-    }))
-  );
-  await User.insertMany(users);
 
   const patientIdMap = {};
   for (const { id, ...patient } of MOCK_PATIENTS) {
