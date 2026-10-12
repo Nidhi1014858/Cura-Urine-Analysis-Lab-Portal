@@ -63,12 +63,21 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
       return;
     }
 
+    const trimmedPhone = newPatient.phone?.trim();
+    const trimmedEmail = newPatient.email?.trim();
+    const trimmedBloodGroup = newPatient.bloodGroup?.trim();
+    const trimmedAddress = newPatient.address?.trim();
+
     setIsSubmitting(true);
     try {
       const created = await mockApi.createPatient({
-        ...newPatient,
         name,
-        age: ageNum
+        age: ageNum,
+        gender: newPatient.gender || 'Other',
+        ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+        ...(trimmedEmail ? { email: trimmedEmail } : {}),
+        ...(trimmedBloodGroup ? { bloodGroup: trimmedBloodGroup } : {}),
+        ...(trimmedAddress ? { address: trimmedAddress } : {})
       });
 
       const refreshedList = await mockApi.getPatients();
@@ -311,6 +320,29 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
                 <option value="AB+">AB+</option>
                 <option value="O-">O-</option>
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Email ID</label>
+              <input
+                type="email"
+                value={newPatient.email}
+                onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })}
+                placeholder="patient@example.com"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Address</label>
+              <input
+                type="text"
+                value={newPatient.address}
+                onChange={(e) => setNewPatient({ ...newPatient, address: e.target.value })}
+                placeholder="City, State"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+              />
             </div>
           </div>
 
