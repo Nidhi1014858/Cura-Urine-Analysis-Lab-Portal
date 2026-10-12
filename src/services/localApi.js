@@ -2,7 +2,8 @@
  * Mock Data Service for Cura Urinalysis Portal
  * Stores data in localStorage, isolated behind asynchronous functions.
  */
-import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from './seedData';
+import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from './seedData.js';
+import { getSampleRGBReadings } from './predictionEngine.js';
 
 const KEYS = {
   USERS: 'cura_users',
@@ -372,5 +373,30 @@ export const localApi = {
         return new Date(b.submittedAt) - new Date(a.submittedAt);
       })
     };
+  },
+
+  // --- RGB DATASET ---
+  async getRgbDataset() {
+    await delay();
+    return [
+      {
+        id: 'normal-001',
+        label: 'Normal hydration baseline',
+        status: 'normal',
+        rgbReadings: getSampleRGBReadings('14-panel', 'normal')
+      },
+      {
+        id: 'abnormal-001',
+        label: 'High glucose / protein clinical profile',
+        status: 'abnormal',
+        rgbReadings: getSampleRGBReadings('14-panel', 'abnormal')
+      },
+      {
+        id: 'mixed-001',
+        label: 'Suspected UTI & microalbuminuria profile',
+        status: 'mixed',
+        rgbReadings: getSampleRGBReadings('14-panel', 'mixed')
+      }
+    ];
   }
 };

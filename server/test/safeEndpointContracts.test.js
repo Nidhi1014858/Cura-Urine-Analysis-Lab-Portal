@@ -17,6 +17,8 @@ import { getSampleRGBReadings, PANEL_10_KEYS, PANEL_14_KEYS } from '../../src/se
 import { jsonTransform } from '../utils/jsonTransform.js';
 import { restrictTo } from '../middleware/auth.js';
 import { signup } from '../controllers/authController.js';
+import { RgbDataset } from '../models/RgbDataset.js';
+import { getRgbDataset } from '../controllers/rgbDatasetController.js';
 
 process.env.JWT_SECRET = 'test-mock-jwt-secret-key-for-contracts';
 
@@ -466,6 +468,87 @@ runTest('9d. CORS preflight OPTIONS request sets appropriate headers for allowed
   assert.equal(headersSet['access-control-allow-origin'], 'http://localhost:3000');
   assert.equal(headersSet['access-control-allow-credentials'], 'true');
   assert.ok(headersSet['access-control-allow-methods'].includes('POST'));
+});
+
+// --- 10. RGB Dataset Model & Controller Contract Tests ---
+runTest('10a. RgbDataset model uses exact collection name "rgb_dataset"', () => {
+  assert.equal(RgbDataset.collection.name, 'rgb_dataset');
+});
+
+runTest('10b. RgbDataset toJSON preserves business id and strips _id and __v', () => {
+  const instance = new RgbDataset({
+    id: 'normal-001',
+    label: 'Normal hydration baseline',
+    status: 'normal',
+    rgbReadings: { glucose: { r: 64, g: 196, b: 180 } }
+  });
+  const json = instance.toJSON();
+  assert.equal(json.id, 'normal-001');
+  assert.equal(json.label, 'Normal hydration baseline');
+  assert.equal(json._id, undefined);
+  assert.equal(json.__v, undefined);
+});
+
+await runAsyncTest('10c. getRgbDataset returns 200 with retrieved dataset array', async () => {
+  const originalFind = RgbDataset.find;
+  try {
+    RgbDataset.find = () => ({
+      sort: () => Promise.resolve([
+        { id: 'sample-1', label: 'Sample 1', status: 'normal', rgbReadings: {} }
+      ])
+    });
+
+    const res = mockRes();
+    let nextCalled = false;
+    await getRgbDataset({}, res, () => { nextCalled = true; });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(Array.isArray(res.body), true);
+    assert.equal(res.body.length, 1);
+    assert.equal(res.body[0].id, 'sample-1');
+    assert.equal(nextCalled, false);
+  } finally {
+    RgbDataset.find = originalFind;
+  }
+});
+
+await runAsyncTest('10d. getRgbDataset handles empty dataset collection returning 200 with []', async () => {
+  const originalFind = RgbDataset.find;
+  try {
+    RgbDataset.find = () => ({
+      sort: () => Promise.resolve([])
+    });
+
+    const res = mockRes();
+    let nextCalled = false;
+    await getRgbDataset({}, res, () => { nextCalled = true; });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(Array.isArray(res.body), true);
+    assert.equal(res.body.length, 0);
+    assert.equal(nextCalled, false);
+  } finally {
+    RgbDataset.find = originalFind;
+  }
+});
+
+await runAsyncTest('10e. getRgbDataset propagates database failure to next(err)', async () => {
+  const originalFind = RgbDataset.find;
+  try {
+    const dbError = new Error('Database connection dropped');
+    RgbDataset.find = () => ({
+      sort: () => Promise.reject(dbError)
+    });
+
+    const res = mockRes();
+    let passedError = null;
+    await getRgbDataset({}, res, (err) => { passedError = err; });
+
+    assert.equal(passedError, dbError);
+    assert.equal(res.statusCode, null);
+  } finally {
+    RgbDataset.find = originalFind;
+  }
 });
 
 console.log(`\n=== SAFE CONTRACT TESTS COMPLETE: ${passedTests}/${totalTests} PASSED ===`);

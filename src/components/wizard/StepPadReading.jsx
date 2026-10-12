@@ -1,21 +1,49 @@
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Database, Sliders, Upload } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Database, Loader2, RotateCcw, Sliders, Upload } from 'lucide-react';
 import {
   ANALYTE_DEFINITIONS,
   PANEL_10_KEYS,
   PANEL_14_KEYS
 } from '../../services/predictionEngine';
 import { rgbToCss, rgbToHex } from '../../utils/colorUtils';
-import urineRgbDataset from '../../data/urineRgbDataset.json';
+import { mockApi } from '../../services/mockApi';
 
 export function StepPadReading({ formData, updateFormData, onNext, onPrev }) {
   const panelType = formData.panelType || '10-panel';
   const analyteKeys = panelType === '14-panel' ? PANEL_14_KEYS : PANEL_10_KEYS;
   const rgbReadings = formData.rgbReadings || {};
-  const [selectedDatasetId, setSelectedDatasetId] = useState(urineRgbDataset[0]?.id || '');
+
+  const [dataset, setDataset] = useState([]);
+  const [isLoadingDataset, setIsLoadingDataset] = useState(true);
+  const [datasetError, setDatasetError] = useState(null);
+  const [selectedDatasetId, setSelectedDatasetId] = useState('');
+
+  const loadDataset = async () => {
+    setIsLoadingDataset(true);
+    setDatasetError(null);
+    try {
+      const data = await mockApi.getRgbDataset();
+      const list = Array.isArray(data) ? data : [];
+      setDataset(list);
+      if (list.length > 0) {
+        setSelectedDatasetId((prev) => {
+          return list.some((item) => item.id === prev) ? prev : list[0].id;
+        });
+      }
+    } catch (err) {
+      setDatasetError(err.message || 'Failed to load RGB reference dataset from server.');
+    } finally {
+      setIsLoadingDataset(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDataset();
+  }, []);
+
   const selectedDataset = useMemo(
-    () => urineRgbDataset.find((sample) => sample.id === selectedDatasetId) || urineRgbDataset[0],
-    [selectedDatasetId]
+    () => dataset.find((sample) => sample.id === selectedDatasetId) || dataset[0] || null,
+    [dataset, selectedDatasetId]
   );
   const completeCount = analyteKeys.filter((key) => {
     const rgb = rgbReadings[key];
@@ -36,7 +64,7 @@ export function StepPadReading({ formData, updateFormData, onNext, onPrev }) {
   };
 
   const handleImportDataset = () => {
-    if (!selectedDataset) return;
+    if (!selectedDataset || !selectedDataset.rgbReadings) return;
 
     const importedReadings = analyteKeys.reduce((result, key) => {
       const rgb = selectedDataset.rgbReadings[key];
@@ -87,28 +115,55 @@ export function StepPadReading({ formData, updateFormData, onNext, onPrev }) {
             RGB Triplet Inputs ({analyteKeys.length} Pads)
           </h3>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              <Database className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-              <select
-                value={selectedDatasetId}
-                onChange={(event) => setSelectedDatasetId(event.target.value)}
-                className="h-9 w-full sm:w-64 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-teal-500"
-              >
-                {urineRgbDataset.map((sample, index) => (
-                  <option key={sample.id} value={sample.id}>
-                    {index + 1}. {sample.label} ({sample.status})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={handleImportDataset}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 text-xs font-bold text-white shadow-sm shadow-teal-600/20 transition-colors hover:bg-teal-700"
-            >
-              <Upload className="w-4 h-4" />
-              Import RGB
-            </button>
+            {isLoadingDataset ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs text-slate-500 dark:text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                <span>Loading reference dataset...</span>
+              </div>
+            ) : datasetError ? (
+              <div className="flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate max-w-[200px]" title={datasetError}>{datasetError}</span>
+                <button
+                  type="button"
+                  onClick={loadDataset}
+                  className="font-bold underline hover:text-rose-700 flex items-center gap-1 ml-1"
+                >
+                  <RotateCcw className="w-3 h-3" /> Retry
+                </button>
+              </div>
+            ) : dataset.length === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-900">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>No reference samples found in dataset</span>
+              </div>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <Database className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <select
+                    value={selectedDatasetId}
+                    onChange={(event) => setSelectedDatasetId(event.target.value)}
+                    className="h-9 w-full sm:w-64 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    {dataset.map((sample, index) => (
+                      <option key={sample.id} value={sample.id}>
+                        {index + 1}. {sample.label} ({sample.status})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleImportDataset}
+                  disabled={!selectedDataset}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 text-xs font-bold text-white shadow-sm shadow-teal-600/20 transition-colors hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import RGB
+                </button>
+              </>
+            )}
           </div>
         </div>
 

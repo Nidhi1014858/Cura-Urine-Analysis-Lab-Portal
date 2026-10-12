@@ -9,6 +9,7 @@ import authRouter, { userRouter } from './routes/authRoutes.js';
 import patientRoutes from './routes/patientRoutes.js';
 import testRoutes from './routes/testRoutes.js';
 import statRoutes from './routes/statRoutes.js';
+import rgbDatasetRoutes from './routes/rgbDatasetRoutes.js';
 import { seedIfEmpty } from './seed/seedRunner.js';
 
 import { createCorsOptions } from './config/corsConfig.js';
@@ -37,6 +38,7 @@ app.use('/api/users', userRouter);
 app.use('/api/patients', patientRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/stats', statRoutes);
+app.use('/api/rgb-dataset', rgbDatasetRoutes);
 
 app.use(errorHandler);
 

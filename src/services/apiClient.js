@@ -198,6 +198,10 @@ export const apiClient = {
 
   async getDashboardStats() {
     return request('/stats/dashboard');
+  },
+
+  async getRgbDataset() {
+    return request('/rgb-dataset');
   }
 };
 
