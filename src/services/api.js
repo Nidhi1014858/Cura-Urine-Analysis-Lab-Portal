@@ -60,7 +60,10 @@ export const api = {
   getBatchSummary: (batch) => apiClient.getBatchSummary(batch),
 
   // Dashboard stats connected to apiClient
-  getDashboardStats: () => apiClient.getDashboardStats()
+  getDashboardStats: () => apiClient.getDashboardStats(),
+
+  // RGB dataset reference data
+  getRgbDataset: () => apiClient.getRgbDataset()
 };
 
 export default api;
