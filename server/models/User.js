@@ -21,8 +21,8 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: {
-      values: ['Technician', 'Clinician'],
-      message: 'Role must be Technician or Clinician'
+      values: ['Technician', 'Clinician', 'Admin'],
+      message: 'Role must be Technician, Clinician, or Admin'
     },
     required: [true, 'Role is required'],
     immutable: true

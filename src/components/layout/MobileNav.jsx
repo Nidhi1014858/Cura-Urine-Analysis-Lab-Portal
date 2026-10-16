@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FlaskConical, FileText, Users, CheckSquare, User } from 'lucide-react';
+import { LayoutDashboard, FlaskConical, FileText, Users, CheckSquare, User, Package } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function MobileNav({ pendingCount = 0 }) {
@@ -11,6 +11,7 @@ export function MobileNav({ pendingCount = 0 }) {
     { label: 'Reports', path: '/reports', icon: FileText },
     { label: 'Patients', path: '/patients', icon: Users },
     ...(user?.role === 'Clinician' ? [{ label: 'Reviews', path: '/review-queue', icon: CheckSquare, badge: pendingCount }] : []),
+    ...(user?.role === 'Admin' ? [{ label: 'Inventory', path: '/inventory', icon: Package }] : []),
     { label: 'Profile', path: '/profile', icon: User }
   ];
 

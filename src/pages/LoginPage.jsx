@@ -32,8 +32,11 @@ export function LoginPage() {
     if (demoRole === 'Technician') {
       setEmail('tech@cura.lab');
       setPassword('password123');
-    } else {
+    } else if (demoRole === 'Clinician') {
       setEmail('clinician@cura.lab');
+      setPassword('password123');
+    } else if (demoRole === 'Admin') {
+      setEmail('admin@cura.lab');
       setPassword('password123');
     }
   };
@@ -89,22 +92,30 @@ export function LoginPage() {
               <Sparkles className="w-3 h-3 text-amber-400" /> Quick Demo Credentials:
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-3 gap-2 text-xs">
             <button
               type="button"
               onClick={() => fillDemoAccount('Technician')}
-              className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-300 text-left"
+              className="px-2.5 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-300 text-left transition-colors"
             >
-              <div className="font-bold text-teal-400">Lab Technician</div>
-              <div className="text-[10px] text-slate-400 font-mono">tech@cura.lab</div>
+              <div className="font-bold text-teal-400 truncate">Technician</div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">tech@cura.lab</div>
             </button>
             <button
               type="button"
               onClick={() => fillDemoAccount('Clinician')}
-              className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-300 text-left"
+              className="px-2.5 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-300 text-left transition-colors"
             >
-              <div className="font-bold text-teal-400">Dr. Clinician</div>
-              <div className="text-[10px] text-slate-400 font-mono">clinician@cura.lab</div>
+              <div className="font-bold text-teal-400 truncate">Clinician</div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">clinician@cura.lab</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemoAccount('Admin')}
+              className="px-2.5 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-300 text-left transition-colors"
+            >
+              <div className="font-bold text-amber-400 truncate">Admin</div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">admin@cura.lab</div>
             </button>
           </div>
         </div>

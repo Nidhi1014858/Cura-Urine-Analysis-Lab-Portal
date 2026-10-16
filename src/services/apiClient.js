@@ -210,6 +210,34 @@ export const apiClient = {
 
   async getRgbDataset() {
     return request('/rgb-dataset');
+  },
+
+  async getInventory(filters = {}) {
+    return request(`/inventory${buildQuery(filters)}`);
+  },
+
+  async getInventoryById(id) {
+    return request(`/inventory/${encodeURIComponent(id)}`);
+  },
+
+  async createInventoryBatch(batchData) {
+    return request('/inventory', {
+      method: 'POST',
+      body: batchData
+    });
+  },
+
+  async updateInventoryBatch(id, updates) {
+    return request(`/inventory/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: updates
+    });
+  },
+
+  async deleteInventoryBatch(id) {
+    return request(`/inventory/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
   }
 };
 

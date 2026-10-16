@@ -15,13 +15,16 @@ import {
 import { getTodayIST } from '../../src/utils/formatters.js';
 import { getSampleRGBReadings, PANEL_10_KEYS, PANEL_14_KEYS } from '../../src/services/predictionEngine.js';
 import { jsonTransform } from '../utils/jsonTransform.js';
-import { restrictTo } from '../middleware/auth.js';
-import { signup } from '../controllers/authController.js';
+import { protect, restrictTo } from '../middleware/auth.js';
+import { signup, getMe } from '../controllers/authController.js';
 import { RgbDataset } from '../models/RgbDataset.js';
 import { getRgbDataset } from '../controllers/rgbDatasetController.js';
 import { updatePatient } from '../controllers/patientController.js';
 import { Patient } from '../models/Patient.js';
-import { protect } from '../middleware/auth.js';
+import { MOCK_USERS, MOCK_INVENTORY } from '../../src/services/seedData.js';
+import { localApi } from '../../src/services/localApi.js';
+import { apiClient } from '../../src/services/apiClient.js';
+import { api } from '../../src/services/api.js';
 
 process.env.JWT_SECRET = 'test-mock-jwt-secret-key-for-contracts';
 
@@ -225,6 +228,53 @@ runTest('6b. restrictTo rejects unauthorized role with HTTP 403', () => {
   assert.equal(res.statusCode, 403);
   assert.equal(res.body?.message, 'You do not have permission to do this.');
 });
+
+runTest('6c. restrictTo("Admin") rejects Technician and Clinician with 403 and permits Admin', () => {
+  const middleware = restrictTo('Admin');
+
+  // Technician rejected
+  const reqTech = { user: { role: 'Technician' } };
+  const resTech = mockRes();
+  let nextTech = false;
+  middleware(reqTech, resTech, () => { nextTech = true; });
+  assert.equal(nextTech, false);
+  assert.equal(resTech.statusCode, 403);
+  assert.equal(resTech.body?.message, 'You do not have permission to do this.');
+
+  // Clinician rejected
+  const reqClin = { user: { role: 'Clinician' } };
+  const resClin = mockRes();
+  let nextClin = false;
+  middleware(reqClin, resClin, () => { nextClin = true; });
+  assert.equal(nextClin, false);
+  assert.equal(resClin.statusCode, 403);
+
+  // Admin allowed
+  const reqAdmin = { user: { role: 'Admin' } };
+  const resAdmin = mockRes();
+  let nextAdmin = false;
+  middleware(reqAdmin, resAdmin, () => { nextAdmin = true; });
+  assert.equal(nextAdmin, true);
+});
+
+await runAsyncTest('6d. protect middleware rejects missing or invalid bearer token with HTTP 401', async () => {
+  const reqNoHeader = { headers: {} };
+  const resNoHeader = mockRes();
+  let nextCalledNoHeader = false;
+  await protect(reqNoHeader, resNoHeader, () => { nextCalledNoHeader = true; });
+  assert.equal(nextCalledNoHeader, false);
+  assert.equal(resNoHeader.statusCode, 401);
+  assert.equal(resNoHeader.body?.message, 'Not authenticated.');
+
+  const reqBadToken = { headers: { authorization: 'Bearer invalid-token-string' } };
+  const resBadToken = mockRes();
+  let nextCalledBadToken = false;
+  await protect(reqBadToken, resBadToken, () => { nextCalledBadToken = true; });
+  assert.equal(nextCalledBadToken, false);
+  assert.equal(resBadToken.statusCode, 401);
+  assert.equal(resBadToken.body?.message, 'Not authenticated.');
+});
+
 import { User } from '../models/User.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 import {
@@ -713,6 +763,274 @@ runTest('11e. restrictTo authorizes Technician and Clinician roles and rejects u
   assert.equal(guestNextCalled, false);
   assert.equal(guestRes.statusCode, 403);
   assert.match(guestRes.body.message, /permission/);
+});
+
+// --- 12. Admin Role & Idempotent Seed Contracts ---
+runTest('12a. User model role enum includes Admin', () => {
+  const roleField = User.schema.path('role');
+  assert.ok(roleField.enumValues.includes('Admin'), 'User role enum must include Admin');
+  assert.ok(roleField.enumValues.includes('Technician'), 'User role enum must include Technician');
+  assert.ok(roleField.enumValues.includes('Clinician'), 'User role enum must include Clinician');
+  assert.equal(roleField.options.immutable, true, 'User role must be immutable');
+});
+
+runTest('12b. MOCK_USERS contains dev Admin account with email admin@cura.lab and role Admin', () => {
+  const adminUser = MOCK_USERS.find((u) => u.email.toLowerCase() === 'admin@cura.lab');
+  assert.ok(adminUser, 'Admin user must exist in MOCK_USERS');
+  assert.equal(adminUser.role, 'Admin');
+  assert.equal(adminUser.password, 'password123');
+});
+
+await runAsyncTest('12c. localApi mock mode initializes and logs in with seeded Admin user', async () => {
+  if (typeof globalThis.localStorage === 'undefined') {
+    const memoryStore = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => memoryStore.get(k) || null,
+      setItem: (k, v) => memoryStore.set(k, String(v)),
+      removeItem: (k) => memoryStore.delete(k),
+      clear: () => memoryStore.clear()
+    };
+  }
+  // Initialize storage with MOCK_USERS
+  globalThis.localStorage.setItem('cura_users', JSON.stringify(MOCK_USERS));
+  const account = await localApi.login('admin@cura.lab', 'password123');
+  assert.equal(account.email, 'admin@cura.lab');
+  assert.equal(account.role, 'Admin');
+});
+
+await runAsyncTest('12d. localApi mock signup blocks role: Admin from public self-registration', async () => {
+  let errorCaught = false;
+  try {
+    await localApi.signup({
+      name: 'Unauthorized Admin',
+      email: 'badadmin@cura.lab',
+      password: 'password123',
+      role: 'Admin'
+    });
+  } catch (err) {
+    errorCaught = true;
+    assert.equal(err.message, 'Role must be Technician or Clinician.');
+  }
+  assert.ok(errorCaught, 'localApi.signup must reject role: Admin');
+});
+
+await runAsyncTest('12e. authController.getMe returns authenticated user preserving Admin role', async () => {
+  const adminUser = {
+    _id: 'admin_mock_id_999',
+    name: 'Hospital Lab Administrator',
+    email: 'admin@cura.lab',
+    role: 'Admin',
+    designation: 'Laboratory Director',
+    department: 'Pathology Management'
+  };
+  const req = { user: adminUser };
+  const res = mockRes();
+  await getMe(req, res, () => {});
+  assert.equal(res.body?.role, 'Admin');
+  assert.equal(res.body?.email, 'admin@cura.lab');
+  assert.equal(res.body?.name, 'Hospital Lab Administrator');
+});
+
+// --- 13. Inventory Service Contracts & Mock Authorization ---
+runTest('13a. apiClient, api, and localApi define all required inventory methods', () => {
+  const methods = ['getInventory', 'getInventoryById', 'createInventoryBatch', 'updateInventoryBatch', 'deleteInventoryBatch'];
+  for (const m of methods) {
+    assert.equal(typeof apiClient[m], 'function', `apiClient.${m} must be a function`);
+    assert.equal(typeof api[m], 'function', `api.${m} must be a function`);
+    assert.equal(typeof localApi[m], 'function', `localApi.${m} must be a function`);
+  }
+});
+
+runTest('13b. MOCK_INVENTORY has valid batches matching STRIP_BRANDS', () => {
+  assert.ok(Array.isArray(MOCK_INVENTORY) && MOCK_INVENTORY.length >= 4);
+  for (const item of MOCK_INVENTORY) {
+    assert.ok(item.brandId);
+    assert.ok(item.brandName);
+    assert.ok(item.batchNumber);
+    assert.ok(item.manufactureDate);
+    assert.ok(item.expiryDate);
+    assert.ok(typeof item.quantity === 'number');
+    assert.ok(Array.isArray(item.panels) && item.panels.length > 0);
+  }
+});
+
+await runAsyncTest('13c. localApi.getInventory requires authentication and allows Technician', async () => {
+  globalThis.localStorage.removeItem('cura_session');
+  let unauthError = null;
+  try {
+    await localApi.getInventory();
+  } catch (err) {
+    unauthError = err;
+  }
+  assert.ok(unauthError, 'Unauthenticated getInventory must throw error');
+  assert.equal(unauthError.status, 401);
+
+  const tech = MOCK_USERS.find(u => u.role === 'Technician');
+  globalThis.localStorage.setItem('cura_session', JSON.stringify(tech));
+  globalThis.localStorage.setItem('cura_inventory', JSON.stringify(MOCK_INVENTORY));
+
+  const items = await localApi.getInventory();
+  assert.ok(Array.isArray(items));
+  assert.ok(items.length >= 4);
+});
+
+await runAsyncTest('13d. localApi inventory mutations reject Technician and Clinician with 403', async () => {
+  const tech = MOCK_USERS.find(u => u.role === 'Technician');
+  globalThis.localStorage.setItem('cura_session', JSON.stringify(tech));
+
+  let createError = null;
+  try {
+    await localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: ['14-panel'],
+      batchNumber: 'TECH-MUT-01',
+      manufactureDate: '2026-05-01',
+      expiryDate: '2027-05-01',
+      quantity: 50
+    });
+  } catch (err) {
+    createError = err;
+  }
+  assert.ok(createError);
+  assert.equal(createError.status, 403);
+  assert.equal(createError.message, 'You do not have permission to do this.');
+
+  let updateError = null;
+  try {
+    await localApi.updateInventoryBatch('inv_01', { quantity: 999 });
+  } catch (err) {
+    updateError = err;
+  }
+  assert.ok(updateError);
+  assert.equal(updateError.status, 403);
+
+  let deleteError = null;
+  try {
+    await localApi.deleteInventoryBatch('inv_01');
+  } catch (err) {
+    deleteError = err;
+  }
+  assert.ok(deleteError);
+  assert.equal(deleteError.status, 403);
+});
+
+await runAsyncTest('13e. localApi inventory mutations allow Admin and enforce uniqueness and validation', async () => {
+  const admin = MOCK_USERS.find(u => u.role === 'Admin');
+  globalThis.localStorage.setItem('cura_session', JSON.stringify(admin));
+  globalThis.localStorage.setItem('cura_inventory', JSON.stringify(MOCK_INVENTORY));
+
+  const newBatch = await localApi.createInventoryBatch({
+    brandId: 'brand_cura14',
+    brandName: 'CuraStrip Pro 14',
+    manufacturer: 'Cura Diagnostics',
+    panels: ['10-panel', '14-panel'],
+    batchNumber: 'CUR-TEST-99',
+    manufactureDate: '2026-05-01',
+    expiryDate: '2027-05-01',
+    quantity: 100
+  });
+  assert.equal(newBatch.batchNumber, 'CUR-TEST-99');
+  assert.equal(newBatch.quantity, 100);
+
+  let dupError = null;
+  try {
+    await localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: ['10-panel', '14-panel'],
+      batchNumber: 'cur-test-99',
+      manufactureDate: '2026-05-01',
+      expiryDate: '2027-05-01',
+      quantity: 50
+    });
+  } catch (err) {
+    dupError = err;
+  }
+  assert.ok(dupError);
+  assert.equal(dupError.status, 409);
+
+  const updated = await localApi.updateInventoryBatch(newBatch.id, { quantity: 150 });
+  assert.equal(updated.quantity, 150);
+
+  const deleteResult = await localApi.deleteInventoryBatch(newBatch.id);
+  assert.equal(deleteResult.id, newBatch.id);
+
+  let notFoundError = null;
+  try {
+    await localApi.getInventoryById(newBatch.id);
+  } catch (err) {
+    notFoundError = err;
+  }
+  assert.ok(notFoundError);
+  assert.equal(notFoundError.status, 404);
+});
+
+await runAsyncTest('13f. localApi inventory creation validates dates, panel requirements, and non-negative integer quantity', async () => {
+  const admin = MOCK_USERS.find(u => u.role === 'Admin');
+  globalThis.localStorage.setItem('cura_session', JSON.stringify(admin));
+
+  // Reject future manufacture date
+  await assert.rejects(
+    () => localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: ['14-panel'],
+      batchNumber: 'FUT-MFG-01',
+      manufactureDate: '2099-01-01',
+      expiryDate: '2099-12-31',
+      quantity: 50
+    }),
+    (err) => err.status === 400 && err.message.includes('future')
+  );
+
+  // Reject expiry date before manufacture date
+  await assert.rejects(
+    () => localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: ['14-panel'],
+      batchNumber: 'INV-EXP-01',
+      manufactureDate: '2026-05-01',
+      expiryDate: '2026-04-30',
+      quantity: 50
+    }),
+    (err) => err.status === 400 && err.message.includes('precede')
+  );
+
+  // Reject negative quantity
+  await assert.rejects(
+    () => localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: ['14-panel'],
+      batchNumber: 'NEG-QTY-01',
+      manufactureDate: '2026-05-01',
+      expiryDate: '2027-05-01',
+      quantity: -5
+    }),
+    (err) => err.status === 400 && err.message.includes('non-negative integer')
+  );
+
+  // Reject empty panels
+  await assert.rejects(
+    () => localApi.createInventoryBatch({
+      brandId: 'brand_cura14',
+      brandName: 'CuraStrip Pro 14',
+      manufacturer: 'Cura Diagnostics',
+      panels: [],
+      batchNumber: 'NO-PANEL-01',
+      manufactureDate: '2026-05-01',
+      expiryDate: '2027-05-01',
+      quantity: 50
+    }),
+    (err) => err.status === 400 && err.message.includes('panel type')
+  );
 });
 
 console.log(`\n=== SAFE CONTRACT TESTS COMPLETE: ${passedTests}/${totalTests} PASSED ===`);

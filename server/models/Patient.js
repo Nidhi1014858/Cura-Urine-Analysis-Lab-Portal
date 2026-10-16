@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { jsonTransform } from '../utils/jsonTransform.js';
+import { createPatientFingerprint } from '../utils/patientNormalization.js';
 
 const patientSchema = new mongoose.Schema({
   patientId: {
@@ -28,7 +29,8 @@ const patientSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    trim: true
+    trim: true,
+    required: [true, 'Phone number is required']
   },
   email: {
     type: String,
@@ -43,10 +45,22 @@ const patientSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  duplicateFingerprint: {
+    type: String,
+    required: true,
+    unique: true,
+    sparse: true,
+    select: false
+  },
   registeredAt: {
     type: Date,
     default: Date.now
   }
+});
+
+patientSchema.pre('validate', function setDuplicateFingerprint(next) {
+  this.duplicateFingerprint = createPatientFingerprint(this);
+  next();
 });
 
 patientSchema.plugin(jsonTransform);

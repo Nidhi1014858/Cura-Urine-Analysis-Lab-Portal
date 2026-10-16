@@ -2,26 +2,49 @@
  * Mock Data Service for Cura Urinalysis Portal
  * Stores data in localStorage, isolated behind asynchronous functions.
  */
-import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from './seedData.js';
+import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS, MOCK_INVENTORY } from './seedData.js';
 import { getSampleRGBReadings } from './predictionEngine.js';
+import {
+  cleanPatientForStorage,
+  patientDetailsMatch
+} from '../utils/patientNormalization.js';
+import { getTodayIST } from '../utils/formatters.js';
 
 const KEYS = {
   USERS: 'cura_users',
   PATIENTS: 'cura_patients',
   TESTS: 'cura_tests',
-  SESSION: 'cura_session'
+  SESSION: 'cura_session',
+  INVENTORY: 'cura_inventory'
 };
 
 // Initialize localStorage with seed data if empty
 function initializeStorage() {
-  if (!localStorage.getItem(KEYS.USERS)) {
+  if (typeof localStorage === 'undefined') return;
+  const storedUsers = localStorage.getItem(KEYS.USERS);
+  if (!storedUsers) {
     localStorage.setItem(KEYS.USERS, JSON.stringify(MOCK_USERS));
+  } else {
+    const users = JSON.parse(storedUsers || '[]');
+    let updated = false;
+    for (const seedUser of MOCK_USERS) {
+      if (!users.some(u => u.email.toLowerCase() === seedUser.email.toLowerCase())) {
+        users.push(seedUser);
+        updated = true;
+      }
+    }
+    if (updated) {
+      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    }
   }
   if (!localStorage.getItem(KEYS.PATIENTS)) {
     localStorage.setItem(KEYS.PATIENTS, JSON.stringify(MOCK_PATIENTS));
   }
   if (!localStorage.getItem(KEYS.TESTS)) {
     localStorage.setItem(KEYS.TESTS, JSON.stringify(MOCK_TESTS));
+  }
+  if (!localStorage.getItem(KEYS.INVENTORY)) {
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(MOCK_INVENTORY));
   }
   // Backfill traceability fields for existing demo/local records.
   const tests = JSON.parse(localStorage.getItem(KEYS.TESTS) || '[]');
@@ -38,6 +61,34 @@ function initializeStorage() {
 initializeStorage();
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function requireAuthUser() {
+  if (typeof localStorage === 'undefined') {
+    const error = new Error('Not authenticated.');
+    error.status = 401;
+    throw error;
+  }
+  const session = localStorage.getItem(KEYS.SESSION);
+  if (!session) {
+    const error = new Error('Not authenticated.');
+    error.status = 401;
+    throw error;
+  }
+  const sessionUser = JSON.parse(session);
+  const users = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+  const currentUser = users.find((u) => u.id === sessionUser.id || u.email?.toLowerCase() === sessionUser.email?.toLowerCase()) || sessionUser;
+  return currentUser;
+}
+
+function requireAdminUser() {
+  const user = requireAuthUser();
+  if (user?.role !== 'Admin') {
+    const error = new Error('You do not have permission to do this.');
+    error.status = 403;
+    throw error;
+  }
+  return user;
+}
 
 export const localApi = {
   // --- AUTH & USER PROFILE ---
@@ -60,6 +111,9 @@ export const localApi = {
 
   async signup({ name, email, password, role, designation, department }) {
     await delay();
+    if (role !== undefined && role !== 'Technician' && role !== 'Clinician') {
+      throw new Error('Role must be Technician or Clinician.');
+    }
     const users = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
     const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (existing) {
@@ -307,7 +361,7 @@ export const localApi = {
       patients = patients.filter(p => 
         p.name.toLowerCase().includes(q) ||
         p.patientId.toLowerCase().includes(q) ||
-        p.phone.includes(q)
+        p.phone?.includes(q)
       );
     }
 
@@ -336,11 +390,28 @@ export const localApi = {
     await delay();
     const patients = JSON.parse(localStorage.getItem(KEYS.PATIENTS) || '[]');
 
+    const cleaned = cleanPatientForStorage(patientData);
+    if (!cleaned.name || !Number.isInteger(cleaned.age) || cleaned.age < 0 || cleaned.age > 150) {
+      throw new Error('Name and a valid whole-number age between 0 and 150 are required.');
+    }
+    if (!/^\+\d{7,15}$/.test(cleaned.phone)) {
+      throw new Error('Phone number must include a valid country code and 7 to 15 digits.');
+    }
+    if (cleaned.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.email)) {
+      throw new Error('Please provide a valid email address.');
+    }
+
+    if (patients.some((patient) => patientDetailsMatch(patient, cleaned))) {
+      const error = new Error('A patient with all the same details already exists.');
+      error.status = 409;
+      throw error;
+    }
+
     const newPatient = {
       id: `pat_${Date.now()}`,
       patientId: `PAT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       registeredAt: new Date().toISOString(),
-      ...patientData
+      ...cleaned
     };
 
     patients.unshift(newPatient);
@@ -460,5 +531,223 @@ export const localApi = {
         rgbReadings: getSampleRGBReadings('14-panel', 'mixed')
       }
     ];
+  },
+
+  // --- INVENTORY MANAGEMENT (Rimjhim API Contract) ---
+  async getInventory(filters = {}) {
+    await delay();
+    requireAuthUser();
+    let items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+
+    if (filters.panelType && filters.panelType !== 'all') {
+      items = items.filter((item) => Array.isArray(item.panels) && item.panels.includes(filters.panelType));
+    }
+
+    if (filters.availableOnly === true || filters.availableOnly === 'true') {
+      items = items.filter((item) => Number(item.quantity) > 0 && item.expiryDate >= today);
+    }
+
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      items = items.filter((item) =>
+        item.batchNumber?.toLowerCase().includes(q) ||
+        item.brandName?.toLowerCase().includes(q) ||
+        item.manufacturer?.toLowerCase().includes(q)
+      );
+    }
+
+    return items;
+  },
+
+  async getInventoryById(id) {
+    await delay();
+    requireAuthUser();
+    const items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const item = items.find((it) => it.id === id || it._id === id);
+    if (!item) {
+      const error = new Error(`Inventory batch with ID ${id} not found.`);
+      error.status = 404;
+      throw error;
+    }
+    return item;
+  },
+
+  async createInventoryBatch(batchData) {
+    await delay();
+    requireAdminUser();
+
+    if (!batchData) {
+      const error = new Error('Batch data is required.');
+      error.status = 400;
+      throw error;
+    }
+
+    const {
+      brandId,
+      brandName,
+      manufacturer,
+      panels,
+      manufactureDate,
+      expiryDate,
+      quantity
+    } = batchData;
+
+    const batchNumber = batchData.batchNumber?.trim();
+
+    if (!brandId || !brandName || !manufacturer || !batchNumber || !manufactureDate || !expiryDate) {
+      const error = new Error('All inventory batch fields are required.');
+      error.status = 400;
+      throw error;
+    }
+
+    const panelList = Array.isArray(panels) ? panels : (panels ? [panels] : []);
+    if (!panelList.length) {
+      const error = new Error('At least one compatible panel type must be specified.');
+      error.status = 400;
+      throw error;
+    }
+
+    const numQty = Number(quantity);
+    if (!Number.isInteger(numQty) || numQty < 0) {
+      const error = new Error('Quantity must be a non-negative integer.');
+      error.status = 400;
+      throw error;
+    }
+
+    const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+    if (manufactureDate > today) {
+      const error = new Error('Manufacture date cannot be in the future.');
+      error.status = 400;
+      throw error;
+    }
+
+    if (expiryDate < manufactureDate) {
+      const error = new Error('Expiry date cannot precede manufacture date.');
+      error.status = 400;
+      throw error;
+    }
+
+    const items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const duplicate = items.find(
+      (it) => it.brandId === brandId && it.batchNumber?.trim().toLowerCase() === batchNumber.toLowerCase()
+    );
+    if (duplicate) {
+      const error = new Error(`A batch with number "${batchNumber}" already exists for this brand.`);
+      error.status = 409;
+      throw error;
+    }
+
+    const now = new Date().toISOString();
+    const newItem = {
+      id: `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      brandId,
+      brandName,
+      manufacturer,
+      panels: panelList,
+      batchNumber,
+      manufactureDate,
+      expiryDate,
+      quantity: numQty,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    items.push(newItem);
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(items));
+    return newItem;
+  },
+
+  async updateInventoryBatch(id, updates = {}) {
+    await delay();
+    requireAdminUser();
+
+    const items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const index = items.findIndex((it) => it.id === id || it._id === id);
+    if (index === -1) {
+      const error = new Error(`Inventory batch with ID ${id} not found.`);
+      error.status = 404;
+      throw error;
+    }
+
+    const existing = items[index];
+
+    if (updates.quantity !== undefined) {
+      const numQty = Number(updates.quantity);
+      if (!Number.isInteger(numQty) || numQty < 0) {
+        const error = new Error('Quantity must be a non-negative integer.');
+        error.status = 400;
+        throw error;
+      }
+      existing.quantity = numQty;
+    }
+
+    if (updates.batchNumber !== undefined) {
+      const newBatchNumber = updates.batchNumber.trim();
+      if (!newBatchNumber) {
+        const error = new Error('Batch number cannot be empty.');
+        error.status = 400;
+        throw error;
+      }
+      const targetBrandId = updates.brandId || existing.brandId;
+      const duplicate = items.find(
+        (it) => (it.id !== id && it._id !== id) &&
+                it.brandId === targetBrandId &&
+                it.batchNumber?.trim().toLowerCase() === newBatchNumber.toLowerCase()
+      );
+      if (duplicate) {
+        const error = new Error(`A batch with number "${newBatchNumber}" already exists for this brand.`);
+        error.status = 409;
+        throw error;
+      }
+      existing.batchNumber = newBatchNumber;
+    }
+
+    const effectiveMfd = updates.manufactureDate || existing.manufactureDate;
+    const effectiveExp = updates.expiryDate || existing.expiryDate;
+    const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+
+    if (updates.manufactureDate !== undefined && effectiveMfd > today) {
+      const error = new Error('Manufacture date cannot be in the future.');
+      error.status = 400;
+      throw error;
+    }
+
+    if ((updates.manufactureDate !== undefined || updates.expiryDate !== undefined) && effectiveExp < effectiveMfd) {
+      const error = new Error('Expiry date cannot precede manufacture date.');
+      error.status = 400;
+      throw error;
+    }
+
+    if (updates.manufactureDate !== undefined) existing.manufactureDate = updates.manufactureDate;
+    if (updates.expiryDate !== undefined) existing.expiryDate = updates.expiryDate;
+    if (updates.brandName !== undefined) existing.brandName = updates.brandName;
+    if (updates.brandId !== undefined) existing.brandId = updates.brandId;
+    if (updates.manufacturer !== undefined) existing.manufacturer = updates.manufacturer;
+    if (updates.panels !== undefined) {
+      existing.panels = Array.isArray(updates.panels) ? updates.panels : [updates.panels];
+    }
+
+    existing.updatedAt = new Date().toISOString();
+    items[index] = existing;
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(items));
+    return existing;
+  },
+
+  async deleteInventoryBatch(id) {
+    await delay();
+    requireAdminUser();
+
+    const items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const index = items.findIndex((it) => it.id === id || it._id === id);
+    if (index === -1) {
+      const error = new Error(`Inventory batch with ID ${id} not found.`);
+      error.status = 404;
+      throw error;
+    }
+
+    const removed = items.splice(index, 1)[0];
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(items));
+    return { message: 'Inventory batch deleted successfully.', id: removed.id || id };
   }
 };

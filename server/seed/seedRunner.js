@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { Patient } from '../models/Patient.js';
 import Test from '../models/Test.js';
 import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from '../../src/services/seedData.js';
+import { createPatientFingerprint } from '../utils/patientNormalization.js';
 
 export async function seedIfEmpty() {
   await Promise.all(
@@ -26,10 +27,13 @@ export async function seedIfEmpty() {
   let seededAny = false;
 
   for (const { id, ...patient } of MOCK_PATIENTS) {
-    let existingPatient = await Patient.findOne({ patientId: patient.patientId });
+    let existingPatient = await Patient.findOne({ patientId: patient.patientId }).select('+duplicateFingerprint');
     if (!existingPatient) {
       existingPatient = await Patient.create(patient);
       seededAny = true;
+    } else if (!existingPatient.duplicateFingerprint) {
+      existingPatient.duplicateFingerprint = createPatientFingerprint(existingPatient);
+      await existingPatient.save();
     }
     patientIdMap[id] = existingPatient._id;
   }

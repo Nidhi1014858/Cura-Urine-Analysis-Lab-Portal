@@ -97,7 +97,8 @@ export function AuthProvider({ children }) {
         updateUserProfile,
         changePassword,
         isTechnician: user?.role === 'Technician',
-        isClinician: user?.role === 'Clinician'
+        isClinician: user?.role === 'Clinician',
+        isAdmin: user?.role === 'Admin'
       }}
     >
       {children}

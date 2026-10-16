@@ -15,6 +15,7 @@ import { PatientsPage } from './pages/PatientsPage';
 import { PatientDetailPage } from './pages/PatientDetailPage';
 import { ReviewQueuePage } from './pages/ReviewQueuePage';
 import { ProfilePage } from './pages/ProfilePage';
+import { InventoryPage } from './pages/InventoryPage';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 
 function ProtectedRoute({ children }) {
@@ -71,6 +72,7 @@ export function App() {
                 <Route path="patients" element={<PatientsPage />} />
                 <Route path="patients/:id" element={<PatientDetailPage />} />
                 <Route path="review-queue" element={<RoleRoute allowed={['Clinician']}><ReviewQueuePage /></RoleRoute>} />
+                <Route path="inventory" element={<RoleRoute allowed={['Admin']}><InventoryPage /></RoleRoute>} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
 

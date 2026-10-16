@@ -7,7 +7,8 @@ import {
   Users, 
   CheckSquare, 
   User, 
-  LogOut
+  LogOut,
+  Package
 } from 'lucide-react';
 import { BrandLogo } from '../common/BrandLogo';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +28,7 @@ export function Sidebar({ pendingCount = 0 }) {
       icon: CheckSquare,
       badge: pendingCount > 0 ? pendingCount : null
     }] : []),
+    ...(user?.role === 'Admin' ? [{ label: 'Inventory', path: '/inventory', icon: Package }] : []),
     { label: 'Profile', path: '/profile', icon: User }
   ];
 

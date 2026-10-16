@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient } from './apiClient.js';
 
 function buildQuery(filters = {}) {
   const params = new URLSearchParams();
@@ -64,7 +64,14 @@ export const api = {
   getDashboardStats: () => apiClient.getDashboardStats(),
 
   // RGB dataset reference data
-  getRgbDataset: () => apiClient.getRgbDataset()
+  getRgbDataset: () => apiClient.getRgbDataset(),
+
+  // Inventory routes connected to apiClient
+  getInventory: (filters) => apiClient.getInventory(filters),
+  getInventoryById: (id) => apiClient.getInventoryById(id),
+  createInventoryBatch: (data) => apiClient.createInventoryBatch(data),
+  updateInventoryBatch: (id, updates) => apiClient.updateInventoryBatch(id, updates),
+  deleteInventoryBatch: (id) => apiClient.deleteInventoryBatch(id)
 };
 
 export default api;
