@@ -7,6 +7,7 @@ export const jsonTransform = (schema) => {
       }
       delete ret.__v;
       delete ret.password;
+      delete ret.duplicateFingerprint;
       return ret;
     }
   });

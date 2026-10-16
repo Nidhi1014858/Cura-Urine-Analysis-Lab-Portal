@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 import { Patient } from '../models/Patient.js';
 import { nextCode } from '../utils/codes.js';
+import {
+  cleanPatientForStorage,
+  createPatientFingerprint
+} from '../utils/patientNormalization.js';
+
+const DUPLICATE_MESSAGE = 'A patient with all the same details already exists.';
 
 export const getPatients = async (req, res, next) => {
   try {
@@ -33,8 +39,8 @@ export const createPatient = async (req, res, next) => {
       return res.status(400).json({ message: 'Name is required.' });
     }
 
-    if (age === undefined || age === null || age === '' || isNaN(Number(age))) {
-      return res.status(400).json({ message: 'Age is required and must be a valid number.' });
+    if (age === undefined || age === null || age === '' || !Number.isInteger(Number(age))) {
+      return res.status(400).json({ message: 'Age is required and must be a whole number.' });
     }
 
     const numAge = Number(age);
@@ -53,19 +59,37 @@ export const createPatient = async (req, res, next) => {
       }
     }
 
-    const trimmedName = name.trim();
-    const trimmedPhone = phone ? String(phone).trim() : '';
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required.' });
+    }
 
-    // Idempotency: prevent duplicate patient creation from quick retries within 30s
-    if (trimmedPhone) {
-      const recentDuplicate = await Patient.findOne({
-        name: trimmedName,
-        phone: trimmedPhone,
-        registeredAt: { $gte: new Date(Date.now() - 30000) }
-      });
-      if (recentDuplicate) {
-        return res.status(200).json(recentDuplicate);
-      }
+    const patientData = cleanPatientForStorage({
+      name,
+      age: numAge,
+      gender: normalizedGender,
+      phone,
+      email,
+      bloodGroup,
+      address
+    });
+
+    if (!/^\+\d{7,15}$/.test(patientData.phone)) {
+      return res.status(400).json({ message: 'Phone number must include a valid country code and 7 to 15 digits.' });
+    }
+
+    if (patientData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientData.email)) {
+      return res.status(400).json({ message: 'Please provide a valid email address.' });
+    }
+
+    const duplicateFingerprint = createPatientFingerprint(patientData);
+    const candidates = await Patient.find({ age: patientData.age }).select('+duplicateFingerprint');
+    const duplicate = candidates.some((candidate) => (
+      candidate.duplicateFingerprint === duplicateFingerprint ||
+      createPatientFingerprint(candidate) === duplicateFingerprint
+    ));
+
+    if (duplicate) {
+      return res.status(409).json({ message: DUPLICATE_MESSAGE });
     }
 
     let patientId = req.body.patientId;
@@ -80,17 +104,18 @@ export const createPatient = async (req, res, next) => {
 
     const patient = await Patient.create({
       patientId,
-      name: trimmedName,
-      age: numAge,
-      gender: normalizedGender,
-      phone: trimmedPhone || undefined,
-      email: email ? String(email).trim().toLowerCase() : undefined,
-      bloodGroup: bloodGroup ? String(bloodGroup).trim() : undefined,
-      address: address ? String(address).trim() : undefined
+      ...patientData,
+      duplicateFingerprint
     });
 
     res.status(201).json(patient);
   } catch (error) {
+    if (
+      error.code === 11000 &&
+      (error.keyPattern?.duplicateFingerprint || error.keyValue?.duplicateFingerprint)
+    ) {
+      return res.status(409).json({ message: DUPLICATE_MESSAGE });
+    }
     next(error);
   }
 };

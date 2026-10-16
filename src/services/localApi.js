@@ -4,6 +4,10 @@
  */
 import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from './seedData.js';
 import { getSampleRGBReadings } from './predictionEngine.js';
+import {
+  cleanPatientForStorage,
+  patientDetailsMatch
+} from '../utils/patientNormalization.js';
 
 const KEYS = {
   USERS: 'cura_users',
@@ -307,7 +311,7 @@ export const localApi = {
       patients = patients.filter(p => 
         p.name.toLowerCase().includes(q) ||
         p.patientId.toLowerCase().includes(q) ||
-        p.phone.includes(q)
+        p.phone?.includes(q)
       );
     }
 
@@ -336,11 +340,28 @@ export const localApi = {
     await delay();
     const patients = JSON.parse(localStorage.getItem(KEYS.PATIENTS) || '[]');
 
+    const cleaned = cleanPatientForStorage(patientData);
+    if (!cleaned.name || !Number.isInteger(cleaned.age) || cleaned.age < 0 || cleaned.age > 150) {
+      throw new Error('Name and a valid whole-number age between 0 and 150 are required.');
+    }
+    if (!/^\+\d{7,15}$/.test(cleaned.phone)) {
+      throw new Error('Phone number must include a valid country code and 7 to 15 digits.');
+    }
+    if (cleaned.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.email)) {
+      throw new Error('Please provide a valid email address.');
+    }
+
+    if (patients.some((patient) => patientDetailsMatch(patient, cleaned))) {
+      const error = new Error('A patient with all the same details already exists.');
+      error.status = 409;
+      throw error;
+    }
+
     const newPatient = {
       id: `pat_${Date.now()}`,
       patientId: `PAT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       registeredAt: new Date().toISOString(),
-      ...patientData
+      ...cleaned
     };
 
     patients.unshift(newPatient);

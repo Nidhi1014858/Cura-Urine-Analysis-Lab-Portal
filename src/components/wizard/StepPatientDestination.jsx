@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Building2, UserCheck, Phone, Mail, MapPin } from 'lucide-react';
 import { mockApi } from '../../services/mockApi';
 import { PATHOLOGY_DESTINATIONS } from '../../services/seedData';
+import { COUNTRY_CODES } from '../../data/countryCodes';
+import { buildInternationalPhone } from '../../utils/patientNormalization';
 import { Modal } from '../common/Modal';
 
 export function StepPatientDestination({ formData, updateFormData, onNext }) {
@@ -10,6 +12,8 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState('IN');
+  const [nationalPhone, setNationalPhone] = useState('');
   const [newPatient, setNewPatient] = useState({
     name: '',
     age: '',
@@ -58,12 +62,18 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
     }
 
     const ageNum = Number(newPatient.age);
-    if (!newPatient.age || isNaN(ageNum) || ageNum < 0 || ageNum > 150) {
-      setModalError('Age must be a valid number between 0 and 150.');
+    if (!newPatient.age || !Number.isInteger(ageNum) || ageNum < 0 || ageNum > 150) {
+      setModalError('Age must be a whole number between 0 and 150.');
       return;
     }
 
-    const trimmedPhone = newPatient.phone?.trim();
+    const country = COUNTRY_CODES.find((item) => item.iso === phoneCountry);
+    const phone = buildInternationalPhone(country?.dialCode, nationalPhone);
+    if (!/^\+\d{7,15}$/.test(phone)) {
+      setModalError('Enter a valid phone number. Country code and number together must contain 7 to 15 digits.');
+      return;
+    }
+
     const trimmedEmail = newPatient.email?.trim();
     const trimmedBloodGroup = newPatient.bloodGroup?.trim();
     const trimmedAddress = newPatient.address?.trim();
@@ -74,7 +84,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
         name,
         age: ageNum,
         gender: newPatient.gender || 'Other',
-        ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+        phone,
         ...(trimmedEmail ? { email: trimmedEmail } : {}),
         ...(trimmedBloodGroup ? { bloodGroup: trimmedBloodGroup } : {}),
         ...(trimmedAddress ? { address: trimmedAddress } : {})
@@ -94,6 +104,8 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
         bloodGroup: 'B+',
         address: ''
       });
+      setPhoneCountry('IN');
+      setNationalPhone('');
     } catch (err) {
       setModalError(err?.message || 'Failed to register patient.');
     } finally {
@@ -250,10 +262,11 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
           }
         }}
         title="Register New Patient"
+        maxWidth="max-w-2xl"
       >
         <form onSubmit={handleCreatePatient} className="space-y-4">
           {modalError && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs font-medium">
+            <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs font-medium">
               {modalError}
             </div>
           )}
@@ -284,7 +297,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Gender</label>
               <select
@@ -297,16 +310,37 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
                 <option value="Other">Other</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Phone</label>
-              <input
-                type="text"
-                value={newPatient.phone}
-                onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
-                placeholder="+91 98200..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
-              />
+            <div className="sm:col-span-2">
+              <label htmlFor="patient-country-code" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Phone *</label>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-2">
+                <select
+                  id="patient-country-code"
+                  aria-label="Phone country code"
+                  value={phoneCountry}
+                  onChange={(e) => setPhoneCountry(e.target.value)}
+                  className="w-full px-2 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  {COUNTRY_CODES.map((country) => (
+                    <option key={country.iso} value={country.iso}>
+                      {country.name} ({country.iso}) {country.dialCode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  required
+                  aria-label="National phone number"
+                  value={nationalPhone}
+                  onChange={(e) => setNationalPhone(e.target.value.replace(/\D/g, '').slice(0, 14))}
+                  placeholder="9820012345"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Blood Group</label>
               <select
@@ -314,11 +348,9 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
                 onChange={(e) => setNewPatient({ ...newPatient, bloodGroup: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
               >
-                <option value="A+">A+</option>
-                <option value="B+">B+</option>
-                <option value="O+">O+</option>
-                <option value="AB+">AB+</option>
-                <option value="O-">O-</option>
+                {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((group) => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
               </select>
             </div>
           </div>
