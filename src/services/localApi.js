@@ -261,16 +261,76 @@ export const localApi = {
 
   async createTest(testData) {
     await delay();
-    const today = new Date().toISOString().slice(0, 10);
-    if (!testData.stripBatch || !testData.manufactureDate || !testData.expiryDate) {
-      throw new Error('Strip batch number, manufacture date, and expiry date are required.');
+    if (!testData) {
+      const error = new Error('Test data is required.');
+      error.status = 400;
+      throw error;
     }
-    if (testData.expiryDate < today) {
-      throw new Error(`This strip batch expired on ${testData.expiryDate} — testing with an expired strip may produce unreliable results. Submission blocked.`);
+
+    if (!testData.patientId) {
+      const error = new Error('Patient ID is required.');
+      error.status = 400;
+      throw error;
     }
-    if (testData.manufactureDate > today || testData.manufactureDate > testData.expiryDate) {
-      throw new Error('Manufacture date must not be in the future or after the expiry date.');
+
+    if (!testData.reportDestination) {
+      const error = new Error('Report destination is required.');
+      error.status = 400;
+      throw error;
     }
+
+    if (!testData.inventoryId) {
+      const error = new Error('Inventory ID is required.');
+      error.status = 400;
+      throw error;
+    }
+
+    // Reload authoritative inventory from local storage
+    const inventoryList = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
+    const batchIndex = inventoryList.findIndex(
+      (b) => b.id === testData.inventoryId || b._id === testData.inventoryId || b.batchNumber === testData.inventoryId
+    );
+
+    if (batchIndex === -1) {
+      const error = new Error('Inventory batch not found.');
+      error.status = 404;
+      throw error;
+    }
+
+    const batch = inventoryList[batchIndex];
+
+    if (Number(batch.quantity) <= 0) {
+      const error = new Error('The selected strip batch is out of stock. Please select an available batch.');
+      error.status = 409;
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+    if (batch.expiryDate < today) {
+      const error = new Error(`This strip batch expired on ${batch.expiryDate} — testing with an expired strip may produce unreliable results. Submission blocked.`);
+      error.status = 400;
+      throw error;
+    }
+
+    if (batch.manufactureDate > today || batch.manufactureDate > batch.expiryDate) {
+      const error = new Error('Manufacture date must not be in the future or after the expiry date.');
+      error.status = 400;
+      throw error;
+    }
+
+    if (testData.panelType && (!batch.panels || !batch.panels.includes(testData.panelType))) {
+      const error = new Error(`The selected strip batch does not support ${testData.panelType}.`);
+      error.status = 400;
+      throw error;
+    }
+
+    // Decrement inventory quantity by exactly one
+    batch.quantity = Number(batch.quantity) - 1;
+    batch.updatedAt = new Date().toISOString();
+    inventoryList[batchIndex] = batch;
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(inventoryList));
+
     const tests = JSON.parse(localStorage.getItem(KEYS.TESTS) || '[]');
 
     // Calculate overall status based on analyte flags
@@ -284,6 +344,11 @@ export const localApi = {
       submittedAt: new Date().toISOString(),
       overallStatus,
       ...testData,
+      inventoryId: batch.id || batch._id,
+      stripBrand: batch.brandName,
+      stripBatch: batch.batchNumber,
+      manufactureDate: batch.manufactureDate,
+      expiryDate: batch.expiryDate,
       clinicianReview: {
         reviewed: false,
         status: 'pending',

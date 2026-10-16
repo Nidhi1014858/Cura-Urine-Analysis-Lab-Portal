@@ -2,7 +2,8 @@ import bcrypt from 'bcryptjs';
 import { User } from '../models/User.js';
 import { Patient } from '../models/Patient.js';
 import Test from '../models/Test.js';
-import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS } from '../../src/services/seedData.js';
+import { Inventory } from '../models/Inventory.js';
+import { MOCK_USERS, MOCK_PATIENTS, MOCK_TESTS, MOCK_INVENTORY } from '../../src/services/seedData.js';
 import { createPatientFingerprint } from '../utils/patientNormalization.js';
 
 export async function seedIfEmpty() {
@@ -62,6 +63,24 @@ export async function seedIfEmpty() {
   if (testsToInsert.length > 0) {
     await Test.insertMany(testsToInsert);
     seededAny = true;
+  }
+
+  // Seed initial inventory batches idempotently
+  if (Array.isArray(MOCK_INVENTORY)) {
+    for (const { id, ...item } of MOCK_INVENTORY) {
+      const normalizedBatch = item.batchNumber.trim().toLowerCase();
+      const existingBatch = await Inventory.findOne({
+        brandId: item.brandId.trim(),
+        batchNumberNormalized: normalizedBatch
+      });
+      if (!existingBatch) {
+        await Inventory.create({
+          ...item,
+          batchNumberNormalized: normalizedBatch
+        });
+        seededAny = true;
+      }
+    }
   }
 
   if (seededAny) {

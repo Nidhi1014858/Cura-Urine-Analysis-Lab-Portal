@@ -279,6 +279,79 @@ export function recalculateAnalytes(panelTypeOrOptions, submittedAnalytes) {
   return result;
 }
 
+/**
+ * Validates inventory batch availability, non-expiration, panel compatibility, and metadata integrity.
+ *
+ * @param {Object} inventory
+ * @param {Object} options
+ * @param {string} options.panelType
+ * @param {string} [options.stripBrand]
+ * @param {string} [options.stripBatch]
+ * @param {string} [options.manufactureDate]
+ * @param {string} [options.expiryDate]
+ * @returns {boolean}
+ */
+export function validateInventoryStock(inventory, options = {}) {
+  if (!inventory) {
+    const error = new Error('Inventory batch not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const { panelType, stripBrand, stripBatch, manufactureDate, expiryDate } = options;
+
+  if (Number(inventory.quantity) <= 0) {
+    const error = new Error('The selected strip batch is out of stock. Please select an available batch.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const today = todayIST();
+  if (inventory.expiryDate < today) {
+    const error = new Error(`This strip batch expired on ${inventory.expiryDate} — testing with an expired strip may produce unreliable results. Submission blocked.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  validateBatch({
+    stripBatch: inventory.batchNumber,
+    manufactureDate: inventory.manufactureDate,
+    expiryDate: inventory.expiryDate
+  });
+
+  if (panelType && (!inventory.panels || !inventory.panels.includes(panelType))) {
+    const error = new Error(`The selected strip batch does not support ${panelType}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (stripBrand && stripBrand !== inventory.brandName && stripBrand !== inventory.brandId) {
+    const error = new Error(`Submitted strip brand "${stripBrand}" does not match inventory batch "${inventory.brandName}".`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (stripBatch && stripBatch.trim().toLowerCase() !== inventory.batchNumber.trim().toLowerCase()) {
+    const error = new Error(`Submitted strip batch "${stripBatch}" does not match inventory batch "${inventory.batchNumber}".`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (manufactureDate && manufactureDate !== inventory.manufactureDate) {
+    const error = new Error('Submitted manufacture date does not match inventory batch.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (expiryDate && expiryDate !== inventory.expiryDate) {
+    const error = new Error('Submitted expiry date does not match inventory batch.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return true;
+}
+
 export const recalculateRGB = recalculateAnalytes;
 export const recalculateTestResults = recalculateAnalytes;
 
@@ -286,6 +359,7 @@ export default {
   todayIST,
   validateBatch,
   validateBrandPanel,
+  validateInventoryStock,
   recalculateAnalytes,
   recalculateRGB,
   recalculateTestResults

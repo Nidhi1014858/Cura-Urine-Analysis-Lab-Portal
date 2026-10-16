@@ -1,10 +1,10 @@
 import mongoose from 'mongoose';
 import { Test } from '../models/Test.js';
 import { Patient } from '../models/Patient.js';
+import { Inventory } from '../models/Inventory.js';
 import { nextCode } from '../utils/codes.js';
 import {
-  validateBatch,
-  validateBrandPanel,
+  validateInventoryStock,
   recalculateAnalytes
 } from '../utils/validation.js';
 
@@ -16,6 +16,8 @@ export const notImplemented = (req, res) => {
  * POST /api/tests
  * Create a new urinalysis test record.
  * Only authenticated Technicians can create tests.
+ * Enforces database inventory reload, unexpired stock > 0 verification,
+ * and atomic stock consumption.
  */
 export const createTest = async (req, res, next) => {
   try {
@@ -28,6 +30,7 @@ export const createTest = async (req, res, next) => {
     }
 
     const {
+      inventoryId,
       patientId,
       panelType,
       stripBrand,
@@ -38,7 +41,7 @@ export const createTest = async (req, res, next) => {
       technicianNotes,
       stripImageUrl,
       analytes: submittedAnalytes
-    } = req.body;
+    } = req.body || {};
 
     if (!patientId) {
       return res.status(400).json({ message: 'Patient ID is required.' });
@@ -48,13 +51,38 @@ export const createTest = async (req, res, next) => {
       return res.status(400).json({ message: 'Report destination is required.' });
     }
 
-    // 1. Validate batch details
-    validateBatch({ stripBatch, manufactureDate, expiryDate });
+    if (!inventoryId) {
+      return res.status(400).json({ message: 'Inventory ID is required.' });
+    }
 
-    // 2. Validate brand and panel compatibility
-    validateBrandPanel(stripBrand, panelType);
+    // 1. Reload authoritative inventory record from database
+    let inventory = null;
+    if (mongoose.isValidObjectId(inventoryId)) {
+      inventory = await Inventory.findById(inventoryId);
+    }
+    if (!inventory) {
+      inventory = await Inventory.findOne({
+        $or: [
+          { _id: mongoose.isValidObjectId(inventoryId) ? inventoryId : null },
+          { batchNumber: inventoryId }
+        ]
+      });
+    }
 
-    // 3. Load Patient
+    if (!inventory) {
+      return res.status(404).json({ message: 'Inventory batch not found.' });
+    }
+
+    // 2. Validate inventory stock, expiry relative to IST, panel compatibility, and non-tampered metadata
+    validateInventoryStock(inventory, {
+      panelType,
+      stripBrand,
+      stripBatch,
+      manufactureDate,
+      expiryDate
+    });
+
+    // 3. Load target Patient
     let patient = null;
     if (mongoose.isValidObjectId(patientId)) {
       patient = await Patient.findById(patientId);
@@ -70,45 +98,167 @@ export const createTest = async (req, res, next) => {
     // 4. Server-side RGB recalculation
     const { analytes, overallStatus } = recalculateAnalytes(panelType, submittedAnalytes);
 
-    // 5. Generate unique test code
-    const testCode = await nextCode('TEST');
+    // 5. Atomic conditional stock consumption + Test creation
+    // Attempts multi-document transaction when MongoDB replica set topology is available.
+    // Gracefully falls back to atomic conditional update with compensating rollback on standalone topologies.
+    let session = null;
+    let useTransaction = false;
 
-    // 6. Create Test document
-    const test = await Test.create({
-      testCode,
-      patientId: patient._id,
-      patientCode: patient.patientId,
-      patientName: patient.name,
-      panelType,
-      stripBrand,
-      stripBatch,
-      manufactureDate,
-      expiryDate,
-      reportDestination,
-      submittedBy: req.user.name,
-      submittedByPhotoUrl: req.user.photoUrl || null,
-      technicianNotes: technicianNotes || '',
-      stripImageUrl: stripImageUrl || null,
-      overallStatus,
-      analytes,
-      clinicianReview: {
-        reviewed: false,
-        status: 'pending',
-        reviewedBy: null,
-        reviewerPhotoUrl: null,
-        reviewedAt: null,
-        notes: ''
-      },
-      auditTrail: [
-        {
-          id: `aud_${Date.now()}`,
-          action: 'Test Submitted',
-          actor: req.user.name,
-          timestamp: new Date(),
-          details: `Submitted ${panelType} test for ${reportDestination}`
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      useTransaction = true;
+    } catch (_err) {
+      if (session) {
+        try {
+          await session.endSession();
+        } catch (_cleanupErr) {
+          // Ignore session cleanup error on standalone topology
         }
-      ]
-    });
+        session = null;
+      }
+      useTransaction = false;
+    }
+
+    let test = null;
+    let stockDecremented = false;
+
+    if (useTransaction) {
+      try {
+        const updatedInventory = await Inventory.findOneAndUpdate(
+          { _id: inventory._id, quantity: { $gt: 0 } },
+          { $inc: { quantity: -1 } },
+          { new: true, session }
+        );
+
+        if (!updatedInventory) {
+          await session.abortTransaction();
+          await session.endSession();
+          return res.status(409).json({ message: 'The last strip in this batch was already consumed. Please select another batch.' });
+        }
+
+        const testCode = await nextCode('TEST');
+
+        const [createdTest] = await Test.create(
+          [
+            {
+              testCode,
+              patientId: patient._id,
+              patientCode: patient.patientId,
+              patientName: patient.name,
+              panelType,
+              inventoryId: inventory._id,
+              stripBrand: inventory.brandName,
+              stripBatch: inventory.batchNumber,
+              manufactureDate: inventory.manufactureDate,
+              expiryDate: inventory.expiryDate,
+              reportDestination,
+              submittedBy: req.user.name,
+              submittedByPhotoUrl: req.user.photoUrl || null,
+              technicianNotes: technicianNotes || '',
+              stripImageUrl: stripImageUrl || null,
+              overallStatus,
+              analytes,
+              clinicianReview: {
+                reviewed: false,
+                status: 'pending',
+                reviewedBy: null,
+                reviewerPhotoUrl: null,
+                reviewedAt: null,
+                notes: ''
+              },
+              auditTrail: [
+                {
+                  id: `aud_${Date.now()}`,
+                  action: 'Test Submitted',
+                  actor: req.user.name,
+                  timestamp: new Date(),
+                  details: `Submitted ${panelType} test for ${reportDestination}`
+                }
+              ]
+            }
+          ],
+          { session }
+        );
+
+        await session.commitTransaction();
+        await session.endSession();
+        test = createdTest;
+      } catch (txnError) {
+        if (session) {
+          try {
+            await session.abortTransaction();
+            await session.endSession();
+          } catch (_abortErr) {
+            // Ignore abort error
+          }
+        }
+        throw txnError;
+      }
+    } else {
+      // Standalone topology fallback: atomic conditional decrement with compensating rollback
+      const updatedInventory = await Inventory.findOneAndUpdate(
+        { _id: inventory._id, quantity: { $gt: 0 } },
+        { $inc: { quantity: -1 } },
+        { new: true }
+      );
+
+      if (!updatedInventory) {
+        return res.status(409).json({ message: 'The last strip in this batch was already consumed. Please select another batch.' });
+      }
+
+      stockDecremented = true;
+
+      try {
+        const testCode = await nextCode('TEST');
+
+        test = await Test.create({
+          testCode,
+          patientId: patient._id,
+          patientCode: patient.patientId,
+          patientName: patient.name,
+          panelType,
+          inventoryId: inventory._id,
+          stripBrand: inventory.brandName,
+          stripBatch: inventory.batchNumber,
+          manufactureDate: inventory.manufactureDate,
+          expiryDate: inventory.expiryDate,
+          reportDestination,
+          submittedBy: req.user.name,
+          submittedByPhotoUrl: req.user.photoUrl || null,
+          technicianNotes: technicianNotes || '',
+          stripImageUrl: stripImageUrl || null,
+          overallStatus,
+          analytes,
+          clinicianReview: {
+            reviewed: false,
+            status: 'pending',
+            reviewedBy: null,
+            reviewerPhotoUrl: null,
+            reviewedAt: null,
+            notes: ''
+          },
+          auditTrail: [
+            {
+              id: `aud_${Date.now()}`,
+              action: 'Test Submitted',
+              actor: req.user.name,
+              timestamp: new Date(),
+              details: `Submitted ${panelType} test for ${reportDestination}`
+            }
+          ]
+        });
+      } catch (creationError) {
+        if (stockDecremented) {
+          try {
+            await Inventory.findByIdAndUpdate(inventory._id, { $inc: { quantity: 1 } });
+          } catch (rollbackErr) {
+            console.error('Failed to compensate inventory decrement:', rollbackErr);
+          }
+        }
+        throw creationError;
+      }
+    }
 
     res.status(201).json(test);
   } catch (error) {

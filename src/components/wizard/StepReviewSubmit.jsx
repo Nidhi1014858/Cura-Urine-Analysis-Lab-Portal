@@ -5,9 +5,9 @@ import { StatusBadge, PanelBadge } from '../common/Badge';
 import { mockApi } from '../../services/mockApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { CheckCircle2, AlertTriangle, Building2, User, FileText, Send } from 'lucide-react';
+import { AlertTriangle, Building2, User, FileText, Send } from 'lucide-react';
 
-export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
+export function StepReviewSubmit({ formData, updateFormData, onPrev, onGoToStep }) {
   const { user } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -38,6 +38,12 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
       return;
     }
 
+    if (!formData.inventoryId) {
+      addToast('Please select an in-stock strip batch before submitting.', 'error');
+      if (typeof onGoToStep === 'function') onGoToStep(2);
+      return;
+    }
+
     if (!formData.stripBatch || !formData.manufactureDate || !formData.expiryDate) {
       addToast('Strip batch number, manufacture date, and expiry date are required.', 'error');
       return;
@@ -62,6 +68,7 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
     setIsSubmitting(true);
     try {
       const created = await mockApi.createTest({
+        inventoryId: formData.inventoryId,
         patientId: formData.patientId,
         patientName: formData.patientName,
         patientCode: formData.patientCode,
@@ -82,7 +89,20 @@ export function StepReviewSubmit({ formData, updateFormData, onPrev }) {
       addToast(`Test report ${created?.testCode || ''} submitted successfully! Auto-queued for clinician review.`, 'success');
       navigate(`/reports/${reportId}`);
     } catch (err) {
-      addToast(err?.message || 'Failed to submit test report', 'error');
+      const status = err?.status || err?.statusCode;
+      const is409 = status === 409 || String(err?.message || '').toLowerCase().includes('stock') || String(err?.message || '').toLowerCase().includes('consumed');
+
+      if (is409) {
+        addToast(err?.message || 'The last strip in this batch was consumed. Please reselect an available strip batch.', 'error');
+        updateFormData({ stockError: err?.message || 'Strip batch out of stock' });
+        if (typeof onGoToStep === 'function') {
+          onGoToStep(2);
+        } else if (typeof onPrev === 'function') {
+          onPrev();
+        }
+      } else {
+        addToast(err?.message || 'Failed to submit test report', 'error');
+      }
     } finally {
       setIsSubmitting(false);
     }

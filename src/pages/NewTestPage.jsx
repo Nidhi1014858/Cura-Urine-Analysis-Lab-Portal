@@ -17,7 +17,8 @@ export function NewTestPage() {
     patientCode: '',
     reportDestination: 'Metropolis Healthcare',
     panelType: '10-panel',
-    stripBrand: 'Siemens Multistix 10SG',
+    inventoryId: '',
+    stripBrand: '',
     stripBatch: '',
     manufactureDate: '',
     expiryDate: '',
@@ -120,6 +121,7 @@ export function NewTestPage() {
           formData={formData}
           updateFormData={updateFormData}
           onPrev={() => setStep(3)}
+          onGoToStep={setStep}
         />
       )}
     </div>

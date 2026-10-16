@@ -122,6 +122,10 @@ const testSchema = new mongoose.Schema({
     enum: ['10-panel', '14-panel'],
     required: [true, 'Panel type is required']
   },
+  inventoryId: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   stripBrand: {
     type: String,
     required: [true, 'Strip brand is required']
