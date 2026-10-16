@@ -9,7 +9,7 @@ import {
   Clock, 
   Building2, 
   FileText,
-  Plus, Search, PackageSearch, AlertCircle, RefreshCw
+  Plus, Search, PackageSearch, AlertCircle, RefreshCw, Package
 } from 'lucide-react';
 import { mockApi } from '../services/mockApi';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +54,7 @@ export function DashboardPage() {
   if (loading) return <LoadingSpinner text="Loading dashboard statistics..." />;
 
   const isClinician = user?.role === 'Clinician';
+  const isAdmin = user?.role === 'Admin';
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -61,19 +62,29 @@ export function DashboardPage() {
       <div className="relative overflow-hidden bg-gradient-to-r from-teal-700 via-teal-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
         <div className="relative z-10 max-w-2xl space-y-2">
           <span className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold bg-white/10 border border-white/20 backdrop-blur-md">
-            {user?.role === 'Clinician' ? 'Clinician Portal Active' : 'Point-of-Care Technician Mode'}
+            {isAdmin ? 'System Administrator Portal' : isClinician ? 'Clinician Portal Active' : 'Point-of-Care Technician Mode'}
           </span>
           <h1 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight">
             Welcome, {user?.name || 'Practitioner'}
           </h1>
           <p className="text-xs sm:text-sm text-teal-100/80 leading-relaxed">
-            {isClinician
+            {isAdmin
+              ? 'Centralized laboratory configuration, system administration, and strip batch inventory management.'
+              : isClinician
               ? `You have ${stats?.pendingReviewsCount || 0} pending test report(s) requiring clinical verification in your queue.`
               : 'Digitizing urinalysis strip readings at the point of care with automated non-linear concentration prediction.'}
           </p>
 
           <div className="pt-3 flex flex-wrap gap-3">
-            {isClinician ? (
+            {isAdmin ? (
+              <button
+                onClick={() => navigate('/inventory')}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-teal-900 font-bold text-xs shadow-md hover:bg-teal-50 transition-all"
+              >
+                <Package className="w-4 h-4 text-teal-700" />
+                Manage Strip Inventory
+              </button>
+            ) : isClinician ? (
               <button
                 onClick={() => navigate('/review-queue')}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-teal-900 font-bold text-xs shadow-md hover:bg-teal-50 transition-all"

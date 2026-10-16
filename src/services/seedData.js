@@ -22,6 +22,16 @@ export const MOCK_USERS = [
     designation: 'Consultant Nephrologist & Clinical Pathologist',
     department: 'Department of Clinical Pathology',
     photoUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200'
+  },
+  {
+    id: 'usr_admin_01',
+    email: 'admin@cura.lab',
+    password: 'password123',
+    name: 'Dev Admin',
+    role: 'Admin',
+    designation: 'Laboratory Systems Administrator',
+    department: 'Clinical Pathology IT & Administration',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
   }
 ];
 
@@ -101,6 +111,61 @@ export const STRIP_BRANDS = [
   { id: 'brand_roche', name: 'Roche Combur-Test 10', panels: ['10-panel'], manufacturer: 'Roche Diagnostics' },
   { id: 'brand_cura14', name: 'CuraStrip Pro 14', panels: ['10-panel', '14-panel'], manufacturer: 'Cura Diagnostics' },
   { id: 'brand_dirui14', name: 'Dirui H14-MA', panels: ['14-panel'], manufacturer: 'Dirui Industrial' }
+];
+
+export const MOCK_INVENTORY = [
+  {
+    id: 'inv_01',
+    brandId: 'brand_cura14',
+    brandName: 'CuraStrip Pro 14',
+    manufacturer: 'Cura Diagnostics',
+    panels: ['10-panel', '14-panel'],
+    batchNumber: 'CUR-14-2401',
+    manufactureDate: '2026-05-01',
+    expiryDate: '2027-05-01',
+    quantity: 120,
+    createdAt: '2026-05-01T08:00:00.000Z',
+    updatedAt: '2026-05-01T08:00:00.000Z'
+  },
+  {
+    id: 'inv_02',
+    brandId: 'brand_multistix',
+    brandName: 'Siemens Multistix 10SG',
+    manufacturer: 'Siemens Healthineers',
+    panels: ['10-panel'],
+    batchNumber: 'MS10-2408',
+    manufactureDate: '2026-04-15',
+    expiryDate: '2027-04-15',
+    quantity: 85,
+    createdAt: '2026-04-15T08:00:00.000Z',
+    updatedAt: '2026-04-15T08:00:00.000Z'
+  },
+  {
+    id: 'inv_03',
+    brandId: 'brand_roche',
+    brandName: 'Roche Combur-Test 10',
+    manufacturer: 'Roche Diagnostics',
+    panels: ['10-panel'],
+    batchNumber: 'RC10-2402',
+    manufactureDate: '2026-03-01',
+    expiryDate: '2027-03-01',
+    quantity: 40,
+    createdAt: '2026-03-01T08:00:00.000Z',
+    updatedAt: '2026-03-01T08:00:00.000Z'
+  },
+  {
+    id: 'inv_04',
+    brandId: 'brand_dirui14',
+    brandName: 'Dirui H14-MA',
+    manufacturer: 'Dirui Industrial',
+    panels: ['14-panel'],
+    batchNumber: 'DH14-2403',
+    manufactureDate: '2025-06-01',
+    expiryDate: '2026-07-31',
+    quantity: 15,
+    createdAt: '2025-06-01T08:00:00.000Z',
+    updatedAt: '2025-06-01T08:00:00.000Z'
+  }
 ];
 
 export const MOCK_TESTS = [
