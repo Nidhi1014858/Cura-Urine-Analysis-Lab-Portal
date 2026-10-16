@@ -51,6 +51,7 @@ export const api = {
   getPatients: (filters) => apiClient.getPatients(filters),
   getPatientById: (id) => apiClient.getPatientById(id),
   createPatient: (data) => apiClient.createPatient(data),
+  updatePatient: (id, data) => apiClient.updatePatient(id, data),
 
   // Test routes connected to apiClient
   getTests: (filters) => apiClient.getTests(filters),

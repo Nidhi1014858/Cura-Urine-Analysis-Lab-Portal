@@ -133,3 +133,112 @@ export const getPatientById = async (req, res, next) => {
     next(error);
   }
 };
+
+export const updatePatient = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, age, gender, phone, email, bloodGroup, address } = req.body;
+
+    let patient;
+    if (mongoose.isValidObjectId(id)) {
+      patient = await Patient.findById(id);
+    }
+    if (!patient) {
+      patient = await Patient.findOne({ patientId: id });
+    }
+
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: 'Name is required and cannot be empty.' });
+      }
+      patient.name = name.trim();
+    }
+
+    if (age !== undefined) {
+      if (age === null || age === '' || isNaN(Number(age))) {
+        return res.status(400).json({ message: 'Age is required and must be a valid number.' });
+      }
+      const numAge = Number(age);
+      if (numAge < 0 || numAge > 150) {
+        return res.status(400).json({ message: 'Age must be between 0 and 150.' });
+      }
+      patient.age = numAge;
+    }
+
+    if (gender !== undefined) {
+      const g = String(gender).trim().toLowerCase();
+      if (g === 'male') patient.gender = 'Male';
+      else if (g === 'female') patient.gender = 'Female';
+      else if (g === 'other') patient.gender = 'Other';
+      else {
+        return res.status(400).json({ message: 'Gender must be Male, Female, or Other.' });
+      }
+    }
+
+    if (phone !== undefined) {
+      patient.phone = phone ? String(phone).trim() : '';
+    }
+
+    if (email !== undefined) {
+      const trimmedEmail = String(email).trim().toLowerCase();
+      if (trimmedEmail) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) {
+          return res.status(400).json({ message: 'Please provide a valid email address.' });
+        }
+        patient.email = trimmedEmail;
+      } else {
+        patient.email = '';
+      }
+    }
+
+    if (bloodGroup !== undefined) {
+      patient.bloodGroup = bloodGroup ? String(bloodGroup).trim() : '';
+    }
+
+    if (address !== undefined) {
+      patient.address = address ? String(address).trim() : '';
+    }
+
+    // Patient ID is immutable and strictly preserved
+    await patient.save();
+
+    // Update patientName on associated tests if name changed
+    if (name !== undefined && mongoose.models.Test) {
+      const Test = mongoose.models.Test;
+      await Test.updateMany(
+        {
+          $or: [
+            { patientId: patient._id },
+            { patientCode: patient.patientId }
+          ]
+        },
+        { $set: { patientName: patient.name } }
+      );
+    }
+
+    let tests = [];
+    if (mongoose.models.Test) {
+      const Test = mongoose.models.Test;
+      const rawTests = await Test.find({
+        $or: [
+          { patientId: patient._id },
+          { patientCode: patient.patientId }
+        ]
+      }).sort({ submittedAt: 1, createdAt: 1 });
+      tests = rawTests.map(t => (typeof t.toJSON === 'function' ? t.toJSON() : t));
+    }
+
+    const patientObj = typeof patient.toJSON === 'function' ? patient.toJSON() : patient;
+    res.json({
+      ...patientObj,
+      tests
+    });
+  } catch (error) {
+    next(error);
+  }
+};

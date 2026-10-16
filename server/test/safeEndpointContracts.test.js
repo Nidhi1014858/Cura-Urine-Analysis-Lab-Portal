@@ -19,6 +19,9 @@ import { restrictTo } from '../middleware/auth.js';
 import { signup } from '../controllers/authController.js';
 import { RgbDataset } from '../models/RgbDataset.js';
 import { getRgbDataset } from '../controllers/rgbDatasetController.js';
+import { updatePatient } from '../controllers/patientController.js';
+import { Patient } from '../models/Patient.js';
+import { protect } from '../middleware/auth.js';
 
 process.env.JWT_SECRET = 'test-mock-jwt-secret-key-for-contracts';
 
@@ -549,6 +552,167 @@ await runAsyncTest('10e. getRgbDataset propagates database failure to next(err)'
   } finally {
     RgbDataset.find = originalFind;
   }
+});
+
+// --- 11. Edit Patient Details Controller & Role Authorization Tests ---
+await runAsyncTest('11a. updatePatient successfully updates patient details, trims strings, and preserves immutable patientId', async () => {
+  const originalFindById = Patient.findById;
+  try {
+    const mockId = new mongoose.Types.ObjectId();
+    const mockPatient = {
+      _id: mockId,
+      patientId: 'PAT-2026-0004',
+      name: 'Original Name',
+      age: 28,
+      gender: 'Male',
+      phone: '+91 9876543210',
+      email: 'old@example.com',
+      bloodGroup: 'B+',
+      address: 'Old Address',
+      save: async function() { return this; },
+      toJSON: function() { return { ...this }; }
+    };
+
+    Patient.findById = () => Promise.resolve(mockPatient);
+
+    const req = {
+      params: { id: String(mockId) },
+      body: {
+        name: '  Updated Patient Name  ',
+        age: 32,
+        gender: 'Female',
+        phone: ' +91 99999 11111 ',
+        email: '  Updated@Example.com ',
+        bloodGroup: 'O+',
+        address: '  New Address, Mumbai  ',
+        patientId: 'TAMPERED-ID-ATTEMPT' // Must be ignored
+      }
+    };
+    const res = mockRes();
+    await updatePatient(req, res, () => {});
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(mockPatient.name, 'Updated Patient Name');
+    assert.equal(mockPatient.age, 32);
+    assert.equal(mockPatient.gender, 'Female');
+    assert.equal(mockPatient.phone, '+91 99999 11111');
+    assert.equal(mockPatient.email, 'updated@example.com');
+    assert.equal(mockPatient.bloodGroup, 'O+');
+    assert.equal(mockPatient.address, 'New Address, Mumbai');
+    assert.equal(mockPatient.patientId, 'PAT-2026-0004'); // Preserved!
+  } finally {
+    Patient.findById = originalFindById;
+  }
+});
+
+await runAsyncTest('11b. updatePatient rejects invalid data (empty name, out-of-range age, malformed email, invalid gender) with HTTP 400', async () => {
+  const originalFindById = Patient.findById;
+  try {
+    const mockId = new mongoose.Types.ObjectId();
+    const createMockDoc = () => ({
+      _id: mockId,
+      patientId: 'PAT-2026-0004',
+      name: 'Valid Name',
+      age: 25,
+      gender: 'Male',
+      phone: '',
+      email: '',
+      bloodGroup: 'B+',
+      address: '',
+      save: async function() { return this; },
+      toJSON: function() { return { ...this }; }
+    });
+
+    Patient.findById = () => Promise.resolve(createMockDoc());
+
+    // 1. Empty name
+    const emptyNameRes = mockRes();
+    await updatePatient({ params: { id: String(mockId) }, body: { name: '   ' } }, emptyNameRes, () => {});
+    assert.equal(emptyNameRes.statusCode, 400);
+    assert.match(emptyNameRes.body.message, /Name is required/);
+
+    // 2. Negative age
+    const negAgeRes = mockRes();
+    await updatePatient({ params: { id: String(mockId) }, body: { age: -5 } }, negAgeRes, () => {});
+    assert.equal(negAgeRes.statusCode, 400);
+    assert.match(negAgeRes.body.message, /between 0 and 150/);
+
+    // 3. Age > 150
+    const overAgeRes = mockRes();
+    await updatePatient({ params: { id: String(mockId) }, body: { age: 151 } }, overAgeRes, () => {});
+    assert.equal(overAgeRes.statusCode, 400);
+
+    // 4. Invalid gender
+    const badGenderRes = mockRes();
+    await updatePatient({ params: { id: String(mockId) }, body: { gender: 'Unknown' } }, badGenderRes, () => {});
+    assert.equal(badGenderRes.statusCode, 400);
+    assert.match(badGenderRes.body.message, /Gender must be Male, Female, or Other/);
+
+    // 5. Malformed email
+    const badEmailRes = mockRes();
+    await updatePatient({ params: { id: String(mockId) }, body: { email: 'not-an-email' } }, badEmailRes, () => {});
+    assert.equal(badEmailRes.statusCode, 400);
+    assert.match(badEmailRes.body.message, /valid email address/);
+  } finally {
+    Patient.findById = originalFindById;
+  }
+});
+
+await runAsyncTest('11c. updatePatient returns HTTP 404 when patient does not exist', async () => {
+  const originalFindById = Patient.findById;
+  const originalFindOne = Patient.findOne;
+  try {
+    Patient.findById = () => Promise.resolve(null);
+    Patient.findOne = () => Promise.resolve(null);
+
+    const res = mockRes();
+    await updatePatient({ params: { id: 'PAT-9999-NONEXISTENT' }, body: { name: 'Any Name' } }, res, () => {});
+    assert.equal(res.statusCode, 404);
+    assert.equal(res.body.message, 'Patient not found');
+  } finally {
+    Patient.findById = originalFindById;
+    Patient.findOne = originalFindOne;
+  }
+});
+
+await runAsyncTest('11d. protect middleware rejects unauthorized requests without valid token with HTTP 401', async () => {
+  // Missing Authorization header
+  const noTokenRes = mockRes();
+  let noTokenNext = false;
+  await protect({ headers: {} }, noTokenRes, () => { noTokenNext = true; });
+  assert.equal(noTokenNext, false);
+  assert.equal(noTokenRes.statusCode, 401);
+  assert.equal(noTokenRes.body.message, 'Not authenticated.');
+
+  // Malformed token
+  const malformedRes = mockRes();
+  let malformedNext = false;
+  await protect({ headers: { authorization: 'Bearer bogus.token.xyz' } }, malformedRes, () => { malformedNext = true; });
+  assert.equal(malformedNext, false);
+  assert.equal(malformedRes.statusCode, 401);
+  assert.equal(malformedRes.body.message, 'Not authenticated.');
+});
+
+runTest('11e. restrictTo authorizes Technician and Clinician roles and rejects unauthorized roles with HTTP 403', () => {
+  const patientRoleGuard = restrictTo('Technician', 'Clinician');
+
+  // Technician allowed
+  let techNextCalled = false;
+  patientRoleGuard({ user: { role: 'Technician' } }, mockRes(), () => { techNextCalled = true; });
+  assert.equal(techNextCalled, true);
+
+  // Clinician allowed
+  let clinicianNextCalled = false;
+  patientRoleGuard({ user: { role: 'Clinician' } }, mockRes(), () => { clinicianNextCalled = true; });
+  assert.equal(clinicianNextCalled, true);
+
+  // Unauthorized role rejected
+  const guestRes = mockRes();
+  let guestNextCalled = false;
+  patientRoleGuard({ user: { role: 'Guest' } }, guestRes, () => { guestNextCalled = true; });
+  assert.equal(guestNextCalled, false);
+  assert.equal(guestRes.statusCode, 403);
+  assert.match(guestRes.body.message, /permission/);
 });
 
 console.log(`\n=== SAFE CONTRACT TESTS COMPLETE: ${passedTests}/${totalTests} PASSED ===`);

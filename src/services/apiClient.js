@@ -170,6 +170,14 @@ export const apiClient = {
     });
   },
 
+  async updatePatient(id, data) {
+    return request(`/patients/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: data
+    });
+  },
+
+
   async createTest(data) {
     return request('/tests', {
       method: 'POST',

@@ -348,6 +348,68 @@ export const localApi = {
     return newPatient;
   },
 
+  async updatePatient(id, patientUpdates) {
+    await delay();
+    const patients = JSON.parse(localStorage.getItem(KEYS.PATIENTS) || '[]');
+    const index = patients.findIndex(p => p.id === id || p.patientId === id);
+    if (index === -1) throw new Error('Patient not found');
+
+    const existing = patients[index];
+    const numAge = patientUpdates.age !== undefined ? Number(patientUpdates.age) : existing.age;
+    if (patientUpdates.name !== undefined && !patientUpdates.name.trim()) {
+      throw new Error('Name is required and cannot be empty.');
+    }
+    if (patientUpdates.age !== undefined && (isNaN(numAge) || numAge < 0 || numAge > 150)) {
+      throw new Error('Age must be between 0 and 150.');
+    }
+    if (patientUpdates.email && patientUpdates.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(patientUpdates.email.trim())) {
+        throw new Error('Please provide a valid email address.');
+      }
+    }
+
+    const updated = {
+      ...existing,
+      ...patientUpdates,
+      name: patientUpdates.name ? patientUpdates.name.trim() : existing.name,
+      age: numAge,
+      gender: patientUpdates.gender || existing.gender,
+      phone: patientUpdates.phone !== undefined ? patientUpdates.phone.trim() : existing.phone,
+      email: patientUpdates.email !== undefined ? patientUpdates.email.trim().toLowerCase() : existing.email,
+      bloodGroup: patientUpdates.bloodGroup !== undefined ? patientUpdates.bloodGroup.trim() : existing.bloodGroup,
+      address: patientUpdates.address !== undefined ? patientUpdates.address.trim() : existing.address,
+      id: existing.id,
+      patientId: existing.patientId,
+      registeredAt: existing.registeredAt
+    };
+
+    patients[index] = updated;
+    localStorage.setItem(KEYS.PATIENTS, JSON.stringify(patients));
+
+    if (patientUpdates.name && patientUpdates.name.trim() !== existing.name) {
+      const tests = JSON.parse(localStorage.getItem(KEYS.TESTS) || '[]');
+      const updatedTests = tests.map(t => {
+        if (t.patientId === existing.id || t.patientCode === existing.patientId) {
+          return { ...t, patientName: updated.name };
+        }
+        return t;
+      });
+      localStorage.setItem(KEYS.TESTS, JSON.stringify(updatedTests));
+    }
+
+    const tests = JSON.parse(localStorage.getItem(KEYS.TESTS) || '[]');
+    const patientTests = tests
+      .filter(t => t.patientId === updated.id || t.patientCode === updated.patientId)
+      .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+
+    return {
+      ...updated,
+      tests: patientTests
+    };
+  },
+
+
   // --- DASHBOARD STATS ---
   async getDashboardStats() {
     await delay();

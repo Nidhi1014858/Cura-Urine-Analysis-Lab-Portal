@@ -1,22 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { mockApi } from '../services/mockApi';
-import { Search, User, Phone, Mail, ArrowRight, Plus, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, User, Phone, Mail, ArrowRight, Plus, AlertCircle, RefreshCw, Edit2 } from 'lucide-react';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { Modal } from '../components/common/Modal';
+import { EditPatientModal } from '../components/patient/EditPatientModal';
+
 
 export function PatientsPage() {
   const navigate = useNavigate();
   const { isTechnician } = useAuth();
+  const { addToast } = useToast();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
+  // Edit Patient State
+  const [editingPatient, setEditingPatient] = useState(null);
+
   // Add Patient Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
   const [newPatient, setNewPatient] = useState({
@@ -205,9 +213,23 @@ export function PatientsPage() {
                       {p.patientId}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    {p.gender}, {p.age}y
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingPatient(p);
+                      }}
+                      title="Edit Patient Details"
+                      className="p-1 rounded-lg text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      {p.gender}, {p.age}y
+                    </span>
+                  </div>
+
                 </div>
 
                 <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
@@ -370,6 +392,26 @@ export function PatientsPage() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Edit Patient Modal */}
+      {editingPatient && (
+        <EditPatientModal
+          isOpen={!!editingPatient}
+          onClose={() => setEditingPatient(null)}
+          patient={editingPatient}
+          onSuccess={(updated) => {
+            setPatients((prev) =>
+              prev.map((item) =>
+                (item.id === updated.id || item.patientId === updated.patientId)
+                  ? { ...item, ...updated }
+                  : item
+              )
+            );
+            setEditingPatient(null);
+            addToast('Patient details updated successfully.', 'success');
+          }}
+        />
       )}
     </div>
   );

@@ -5,6 +5,8 @@ import { StatusBadge, PanelBadge } from '../components/common/Badge';
 import { formatDate, formatShortDate } from '../utils/formatters';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { EditPatientModal } from '../components/patient/EditPatientModal';
 import { 
   ArrowLeft, 
   RotateCcw, 
@@ -15,8 +17,10 @@ import {
   Phone, 
   Mail, 
   MapPin,
-  AlertCircle
+  AlertCircle,
+  Edit2
 } from 'lucide-react';
+
 import {
   ResponsiveContainer,
   LineChart,
@@ -32,11 +36,14 @@ export function PatientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isTechnician } = useAuth();
+  const { addToast } = useToast();
 
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedAnalyte, setSelectedAnalyte] = useState('protein');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
 
   const loadPatientData = async () => {
     setLoading(true);
@@ -146,15 +153,25 @@ export function PatientDetailPage() {
           <ArrowLeft className="w-4 h-4" /> Back to Patients List
         </button>
 
-        {/* Re-test Shortcut Button (Technicians only) */}
-        {isTechnician && (
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {/* Edit Patient Button */}
           <button
-            onClick={handleRetestPatient}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all self-start sm:self-auto"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-teal-600/30 dark:border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950 font-bold text-xs transition-all shadow-sm"
           >
-            <RotateCcw className="w-4 h-4" /> Re-Test This Patient
+            <Edit2 className="w-4 h-4" /> Edit Patient
           </button>
-        )}
+
+          {/* Re-test Shortcut Button (Technicians only) */}
+          {isTechnician && (
+            <button
+              onClick={handleRetestPatient}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all"
+            >
+              <RotateCcw className="w-4 h-4" /> Re-Test This Patient
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Patient Profile Header Card */}
@@ -183,8 +200,17 @@ export function PatientDetailPage() {
                 Blood: {patient.bloodGroup}
               </span>
             )}
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              title="Edit Patient Details"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-teal-950/60 text-slate-700 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 font-bold transition-colors border border-slate-200 dark:border-slate-700 hover:border-teal-500/30"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
           </div>
         </div>
+
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono text-slate-600 dark:text-slate-400 pt-1">
           <div className="flex items-center gap-2">
@@ -361,6 +387,23 @@ export function PatientDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Edit Patient Details Modal */}
+      {patient && (
+        <EditPatientModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          patient={patient}
+          onSuccess={(updated) => {
+            setPatient((prev) => ({
+              ...prev,
+              ...updated,
+              tests: updated.tests || prev.tests
+            }));
+            addToast('Patient details updated successfully.', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }
