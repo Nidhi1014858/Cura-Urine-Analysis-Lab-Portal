@@ -7,6 +7,8 @@ import { Search, User, Phone, Mail, ArrowRight, Plus, AlertCircle, RefreshCw, Ed
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { Modal } from '../components/common/Modal';
 import { EditPatientModal } from '../components/patient/EditPatientModal';
+import { COUNTRY_CODES } from '../data/countryCodes';
+import { buildInternationalPhone } from '../utils/patientNormalization';
 
 
 export function PatientsPage() {
@@ -27,11 +29,12 @@ export function PatientsPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState('IN');
+  const [nationalPhone, setNationalPhone] = useState('');
   const [newPatient, setNewPatient] = useState({
     name: '',
     age: '',
     gender: 'Male',
-    phone: '',
     email: '',
     bloodGroup: 'B+',
     address: ''
@@ -73,18 +76,33 @@ export function PatientsPage() {
     }
 
     const ageNum = Number(newPatient.age);
-    if (!newPatient.age || isNaN(ageNum) || ageNum < 0 || ageNum > 150) {
-      setModalError('Age must be a valid number between 0 and 150.');
+    if (!newPatient.age || !Number.isInteger(ageNum) || ageNum < 0 || ageNum > 150) {
+      setModalError('Age must be a whole number between 0 and 150.');
       return;
     }
+
+    const country = COUNTRY_CODES.find((item) => item.iso === phoneCountry);
+    const phone = buildInternationalPhone(country?.dialCode, nationalPhone);
+    if (!/^\+\d{7,15}$/.test(phone)) {
+      setModalError('Enter a valid phone number. Country code and number together must contain 7 to 15 digits.');
+      return;
+    }
+
+    const trimmedEmail = newPatient.email?.trim();
+    const trimmedBloodGroup = newPatient.bloodGroup?.trim();
+    const trimmedAddress = newPatient.address?.trim();
 
     setIsSubmitting(true);
     setModalError('');
     try {
       const created = await mockApi.createPatient({
-        ...newPatient,
         name: newPatient.name.trim(),
-        age: ageNum
+        age: ageNum,
+        gender: newPatient.gender || 'Other',
+        phone,
+        ...(trimmedEmail ? { email: trimmedEmail } : {}),
+        ...(trimmedBloodGroup ? { bloodGroup: trimmedBloodGroup } : {}),
+        ...(trimmedAddress ? { address: trimmedAddress } : {})
       });
       setPatients((prev) => [created, ...prev]);
       setIsAddModalOpen(false);
@@ -92,11 +110,12 @@ export function PatientsPage() {
         name: '',
         age: '',
         gender: 'Male',
-        phone: '',
         email: '',
         bloodGroup: 'B+',
         address: ''
       });
+      setPhoneCountry('IN');
+      setNationalPhone('');
     } catch (err) {
       setModalError(err?.message || 'Failed to register patient record.');
     } finally {
@@ -257,8 +276,14 @@ export function PatientsPage() {
       {isTechnician && (
         <Modal
           isOpen={isAddModalOpen}
-          onClose={() => !isSubmitting && setIsAddModalOpen(false)}
+          onClose={() => {
+            if (!isSubmitting) {
+              setIsAddModalOpen(false);
+              setModalError('');
+            }
+          }}
           title="Register New Patient"
+          maxWidth="max-w-2xl"
         >
           <form onSubmit={handleCreatePatient} className="space-y-4">
             {modalError && (
@@ -283,7 +308,7 @@ export function PatientsPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Age (years) *
+                  Age *
                 </label>
                 <input
                   type="number"
@@ -298,7 +323,7 @@ export function PatientsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Gender
@@ -313,18 +338,44 @@ export function PatientsPage() {
                   <option value="Other">Other</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Phone
+              <div className="sm:col-span-2">
+                <label htmlFor="registry-patient-country-code" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Phone *
                 </label>
-                <input
-                  type="text"
-                  value={newPatient.phone}
-                  onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
-                  placeholder="+91 98200..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-2">
+                  <select
+                    id="registry-patient-country-code"
+                    aria-label="Phone country code"
+                    value={phoneCountry}
+                    onChange={(e) => setPhoneCountry(e.target.value)}
+                    className="w-full px-2 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    {COUNTRY_CODES.map((country) => (
+                      <option key={country.iso} value={country.iso}>
+                        {country.name} ({country.iso}) {country.dialCode}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    required
+                    aria-label="National phone number"
+                    value={nationalPhone}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const leadingPlus = raw.includes('+') ? '+' : '';
+                      const digits = raw.replace(/\D/g, '');
+                      setNationalPhone(`${leadingPlus}${digits}`.slice(0, 16));
+                    }}
+                    placeholder="9820012345"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Blood Group
@@ -346,10 +397,10 @@ export function PatientsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Email
+                  Email ID
                 </label>
                 <input
                   type="email"
