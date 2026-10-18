@@ -90,9 +90,7 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
         ...(trimmedAddress ? { address: trimmedAddress } : {})
       });
 
-      const refreshedList = await mockApi.getPatients();
-      setPatients(Array.isArray(refreshedList) ? refreshedList : [created, ...patients]);
-
+      setPatients((currentPatients) => [created, ...currentPatients]);
       handleSelectPatient(created);
       setIsAddModalOpen(false);
       setNewPatient({
@@ -332,7 +330,12 @@ export function StepPatientDestination({ formData, updateFormData, onNext }) {
                   required
                   aria-label="National phone number"
                   value={nationalPhone}
-                  onChange={(e) => setNationalPhone(e.target.value.replace(/\D/g, '').slice(0, 14))}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const leadingPlus = raw.includes('+') ? '+' : '';
+                    const digits = raw.replace(/\D/g, '');
+                    setNationalPhone(`${leadingPlus}${digits}`.slice(0, 16));
+                  }}
                   placeholder="9820012345"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500"
                 />

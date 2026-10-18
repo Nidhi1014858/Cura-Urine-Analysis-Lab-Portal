@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { StepPatientDestination } from '../components/wizard/StepPatientDestination';
 import { StepStripSelection } from '../components/wizard/StepStripSelection';
@@ -49,9 +49,9 @@ export function NewTestPage() {
     }
   }, [prefilledPatientId]);
 
-  const updateFormData = (fields) => {
+  const updateFormData = useCallback((fields) => {
     setFormData(prev => ({ ...prev, ...fields }));
-  };
+  }, []);
 
   const steps = [
     { num: 1, title: 'Patient & Destination' },

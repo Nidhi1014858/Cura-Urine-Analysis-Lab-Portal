@@ -503,6 +503,14 @@ await runAsyncTest('9a. localApi.createTest decrements batch stock by 1 and fail
 
   globalThis.localStorage.setItem('cura_inventory', JSON.stringify(initialInventory));
   globalThis.localStorage.setItem('cura_tests', JSON.stringify([]));
+  const technician = {
+    id: 'usr_test_tech',
+    email: 'tech-test@cura.lab',
+    name: 'Test Technician',
+    role: 'Technician'
+  };
+  globalThis.localStorage.setItem('cura_users', JSON.stringify([technician]));
+  globalThis.localStorage.setItem('cura_session', JSON.stringify(technician));
 
   // First test succeeds and consumes the 1 strip
   const test1 = await localApi.createTest({
@@ -534,6 +542,25 @@ await runAsyncTest('9a. localApi.createTest decrements batch stock by 1 and fail
   assert.ok(errorCaught, 'Second test must fail');
   assert.equal(errorCaught.status, 409);
   assert.match(errorCaught.message, /out of stock/);
+});
+
+await runAsyncTest('9b. localApi failed validation consumes zero strips', async () => {
+  const inventory = JSON.parse(globalThis.localStorage.getItem('cura_inventory'));
+  inventory[0].quantity = 1;
+  globalThis.localStorage.setItem('cura_inventory', JSON.stringify(inventory));
+
+  await assert.rejects(
+    () => localApi.createTest({
+      inventoryId: 'inv_test_single',
+      patientId: 'pat_101',
+      panelType: '14-panel',
+      reportDestination: 'Metropolis Healthcare'
+    }),
+    /Analyte readings are required/
+  );
+
+  const unchangedInventory = JSON.parse(globalThis.localStorage.getItem('cura_inventory'));
+  assert.equal(unchangedInventory[0].quantity, 1, 'Failed local submission must not consume stock');
 });
 
 console.log(`\n=== INVENTORY & STOCK TESTS COMPLETE: ${passedTests}/${totalTests} PASSED ===`);

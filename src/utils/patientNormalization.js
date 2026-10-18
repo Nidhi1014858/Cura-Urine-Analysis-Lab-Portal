@@ -12,7 +12,19 @@ export function normalizePhone(value) {
 
 export function buildInternationalPhone(dialCode, nationalNumber) {
   const dialDigits = String(dialCode ?? '').replace(/\D/g, '');
-  const nationalDigits = String(nationalNumber ?? '').replace(/\D/g, '');
+  const rawNationalNumber = String(nationalNumber ?? '').trim();
+  const nationalDigits = rawNationalNumber.replace(/\D/g, '');
+
+  // A user may paste a complete international number into the national-number
+  // field. Preserve that number instead of prefixing the selected dial code twice.
+  if (rawNationalNumber.includes('+')) {
+    return nationalDigits ? `+${nationalDigits}` : '';
+  }
+  if (rawNationalNumber.startsWith('00')) {
+    const internationalDigits = nationalDigits.slice(2);
+    return internationalDigits ? `+${internationalDigits}` : '';
+  }
+
   return dialDigits && nationalDigits ? `+${dialDigits}${nationalDigits}` : '';
 }
 

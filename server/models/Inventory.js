@@ -26,7 +26,8 @@ const inventorySchema = new mongoose.Schema(
     brandId: {
       type: String,
       required: [true, 'Brand ID is required'],
-      trim: true
+      trim: true,
+      lowercase: true
     },
     brandName: {
       type: String,
@@ -117,7 +118,7 @@ inventorySchema.pre('save', function (next) {
     this.batchNumberNormalized = this.batchNumber.trim().toLowerCase();
   }
   if (this.brandId) {
-    this.brandId = this.brandId.trim();
+    this.brandId = this.brandId.trim().toLowerCase();
   }
   next();
 });
@@ -133,10 +134,10 @@ inventorySchema.pre('findOneAndUpdate', function (next) {
       update.$set.batchNumberNormalized = update.$set.batchNumber.trim().toLowerCase();
     }
     if (update.brandId) {
-      update.brandId = update.brandId.trim();
+      update.brandId = update.brandId.trim().toLowerCase();
     }
     if (update.$set?.brandId) {
-      update.$set.brandId = update.$set.brandId.trim();
+      update.$set.brandId = update.$set.brandId.trim().toLowerCase();
     }
   }
   next();

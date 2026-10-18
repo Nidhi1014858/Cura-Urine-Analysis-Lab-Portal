@@ -229,6 +229,37 @@ export const updatePatient = async (req, res, next) => {
       patient.address = address ? String(address).trim() : '';
     }
 
+    const patientData = typeof patient.toObject === 'function' ? patient.toObject() : { ...patient };
+    const normalizedPatient = cleanPatientForStorage(patientData);
+    if (!Number.isInteger(normalizedPatient.age)) {
+      return res.status(400).json({ message: 'Age must be a whole number.' });
+    }
+    if (!/^\+\d{7,15}$/.test(normalizedPatient.phone)) {
+      return res.status(400).json({ message: 'Phone number must include a valid country code and 7 to 15 digits.' });
+    }
+
+    const duplicateFingerprint = createPatientFingerprint(normalizedPatient);
+    const duplicateCandidates = await Patient.find({
+      _id: { $ne: patient._id },
+      age: normalizedPatient.age
+    }).select('+duplicateFingerprint');
+    const duplicate = duplicateCandidates.some((candidate) => (
+      candidate.duplicateFingerprint === duplicateFingerprint ||
+      createPatientFingerprint(candidate) === duplicateFingerprint
+    ));
+    if (duplicate) {
+      return res.status(409).json({ message: DUPLICATE_MESSAGE });
+    }
+
+    patient.name = normalizedPatient.name;
+    patient.age = normalizedPatient.age;
+    patient.gender = normalizedPatient.gender;
+    patient.phone = normalizedPatient.phone;
+    patient.email = normalizedPatient.email;
+    patient.bloodGroup = normalizedPatient.bloodGroup;
+    patient.address = normalizedPatient.address;
+    patient.duplicateFingerprint = duplicateFingerprint;
+
     // Patient ID is immutable and strictly preserved
     await patient.save();
 
@@ -264,6 +295,12 @@ export const updatePatient = async (req, res, next) => {
       tests
     });
   } catch (error) {
+    if (
+      error.code === 11000 &&
+      (error.keyPattern?.duplicateFingerprint || error.keyValue?.duplicateFingerprint)
+    ) {
+      return res.status(409).json({ message: DUPLICATE_MESSAGE });
+    }
     next(error);
   }
 };

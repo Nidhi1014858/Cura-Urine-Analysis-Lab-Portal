@@ -45,6 +45,9 @@ Use `VITE_USE_MOCK=true` only for the offline localStorage demo fallback.
 
 - Technician: `tech@cura.lab` / `password123`
 - Clinician: `clinician@cura.lab` / `password123`
+- Admin: `admin@cura.lab` / `password123`
+
+The Admin account is seeded for development and inventory management. Public signup intentionally rejects the `Admin` role.
 
 ## Request Examples
 
