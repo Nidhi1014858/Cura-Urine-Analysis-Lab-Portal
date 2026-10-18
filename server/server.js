@@ -12,6 +12,8 @@ import statRoutes from './routes/statRoutes.js';
 import rgbDatasetRoutes from './routes/rgbDatasetRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import { seedIfEmpty } from './seed/seedRunner.js';
+import { Patient } from './models/Patient.js';
+import { Inventory } from './models/Inventory.js';
 
 import { createCorsOptions } from './config/corsConfig.js';
 
@@ -46,6 +48,9 @@ app.use(errorHandler);
 
 const startServer = async () => {
   await connectDB();
+  // Do not accept writes until the uniqueness indexes that protect patient
+  // fingerprints and inventory batches are confirmed ready.
+  await Promise.all([Patient.init(), Inventory.init()]);
   await seedIfEmpty();
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

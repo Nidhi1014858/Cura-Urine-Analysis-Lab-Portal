@@ -607,6 +607,7 @@ await runAsyncTest('10e. getRgbDataset propagates database failure to next(err)'
 // --- 11. Edit Patient Details Controller & Role Authorization Tests ---
 await runAsyncTest('11a. updatePatient successfully updates patient details, trims strings, and preserves immutable patientId', async () => {
   const originalFindById = Patient.findById;
+  const originalFind = Patient.find;
   try {
     const mockId = new mongoose.Types.ObjectId();
     const mockPatient = {
@@ -624,6 +625,7 @@ await runAsyncTest('11a. updatePatient successfully updates patient details, tri
     };
 
     Patient.findById = () => Promise.resolve(mockPatient);
+    Patient.find = () => ({ select: async () => [] });
 
     const req = {
       params: { id: String(mockId) },
@@ -645,13 +647,14 @@ await runAsyncTest('11a. updatePatient successfully updates patient details, tri
     assert.equal(mockPatient.name, 'Updated Patient Name');
     assert.equal(mockPatient.age, 32);
     assert.equal(mockPatient.gender, 'Female');
-    assert.equal(mockPatient.phone, '+91 99999 11111');
+    assert.equal(mockPatient.phone, '+919999911111');
     assert.equal(mockPatient.email, 'updated@example.com');
     assert.equal(mockPatient.bloodGroup, 'O+');
     assert.equal(mockPatient.address, 'New Address, Mumbai');
     assert.equal(mockPatient.patientId, 'PAT-2026-0004'); // Preserved!
   } finally {
     Patient.findById = originalFindById;
+    Patient.find = originalFind;
   }
 });
 

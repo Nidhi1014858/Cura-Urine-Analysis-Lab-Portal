@@ -5,7 +5,8 @@ import { Inventory } from '../models/Inventory.js';
 import { nextCode } from '../utils/codes.js';
 import {
   validateInventoryStock,
-  recalculateAnalytes
+  recalculateAnalytes,
+  todayIST
 } from '../utils/validation.js';
 
 export const notImplemented = (req, res) => {
@@ -103,21 +104,24 @@ export const createTest = async (req, res, next) => {
     // Gracefully falls back to atomic conditional update with compensating rollback on standalone topologies.
     let session = null;
     let useTransaction = false;
+    const topologyType = mongoose.connection?.client?.topology?.description?.type;
+    const transactionCapableTopology = ['ReplicaSetWithPrimary', 'Sharded'].includes(topologyType);
 
-    try {
-      session = await mongoose.startSession();
-      session.startTransaction();
-      useTransaction = true;
-    } catch (_err) {
-      if (session) {
-        try {
-          await session.endSession();
-        } catch (_cleanupErr) {
-          // Ignore session cleanup error on standalone topology
+    if (transactionCapableTopology) {
+      try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+        useTransaction = true;
+      } catch {
+        if (session) {
+          try {
+            await session.endSession();
+          } catch {
+            // Ignore cleanup failure and use the compensating fallback.
+          }
         }
         session = null;
       }
-      useTransaction = false;
     }
 
     let test = null;
@@ -126,7 +130,12 @@ export const createTest = async (req, res, next) => {
     if (useTransaction) {
       try {
         const updatedInventory = await Inventory.findOneAndUpdate(
-          { _id: inventory._id, quantity: { $gt: 0 } },
+          {
+            _id: inventory._id,
+            quantity: { $gt: 0 },
+            expiryDate: { $gte: todayIST() },
+            panels: panelType
+          },
           { $inc: { quantity: -1 } },
           { new: true, session }
         );
@@ -189,7 +198,7 @@ export const createTest = async (req, res, next) => {
           try {
             await session.abortTransaction();
             await session.endSession();
-          } catch (_abortErr) {
+          } catch {
             // Ignore abort error
           }
         }
@@ -198,7 +207,12 @@ export const createTest = async (req, res, next) => {
     } else {
       // Standalone topology fallback: atomic conditional decrement with compensating rollback
       const updatedInventory = await Inventory.findOneAndUpdate(
-        { _id: inventory._id, quantity: { $gt: 0 } },
+        {
+          _id: inventory._id,
+          quantity: { $gt: 0 },
+          expiryDate: { $gte: todayIST() },
+          panels: panelType
+        },
         { $inc: { quantity: -1 } },
         { new: true }
       );

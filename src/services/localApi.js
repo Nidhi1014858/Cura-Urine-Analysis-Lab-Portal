@@ -62,6 +62,22 @@ initializeStorage();
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function isValidCalendarDate(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() === Number(match[2]) - 1 &&
+    date.getUTCDate() === Number(match[3]);
+}
+
+function hasValidPanels(panels) {
+  return Array.isArray(panels) &&
+    panels.length > 0 &&
+    panels.every((panel) => ['10-panel', '14-panel'].includes(panel));
+}
+
 function requireAuthUser() {
   if (typeof localStorage === 'undefined') {
     const error = new Error('Not authenticated.');
@@ -261,6 +277,13 @@ export const localApi = {
 
   async createTest(testData) {
     await delay();
+    const currentUser = requireAuthUser();
+    if (currentUser?.role !== 'Technician') {
+      const error = new Error('You do not have permission to do this.');
+      error.status = 403;
+      throw error;
+    }
+
     if (!testData) {
       const error = new Error('Test data is required.');
       error.status = 400;
@@ -325,11 +348,25 @@ export const localApi = {
       throw error;
     }
 
-    // Decrement inventory quantity by exactly one
-    batch.quantity = Number(batch.quantity) - 1;
-    batch.updatedAt = new Date().toISOString();
-    inventoryList[batchIndex] = batch;
-    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(inventoryList));
+    const submittedTraceability = {
+      stripBrand: batch.brandName,
+      stripBatch: batch.batchNumber,
+      manufactureDate: batch.manufactureDate,
+      expiryDate: batch.expiryDate
+    };
+    for (const [field, authoritativeValue] of Object.entries(submittedTraceability)) {
+      if (testData[field] && testData[field] !== authoritativeValue) {
+        const error = new Error(`Submitted ${field} does not match the selected inventory batch.`);
+        error.status = 400;
+        throw error;
+      }
+    }
+
+    if (!Array.isArray(testData.analytes) || testData.analytes.length === 0) {
+      const error = new Error('Analyte readings are required.');
+      error.status = 400;
+      throw error;
+    }
 
     const tests = JSON.parse(localStorage.getItem(KEYS.TESTS) || '[]');
 
@@ -360,15 +397,28 @@ export const localApi = {
         {
           id: `aud_${Date.now()}`,
           action: 'Test Submitted',
-          actor: testData.submittedBy || 'Technician',
+          actor: testData.submittedBy || currentUser.name || 'Technician',
           timestamp: new Date().toISOString(),
           details: `Submitted ${testData.panelType} test for ${testData.reportDestination}`
         }
       ]
     };
 
+    // Commit the inventory decrement and test record together as closely as localStorage
+    // permits. If the test write fails, restore the original inventory snapshot.
+    const originalInventoryJson = JSON.stringify(inventoryList);
+    batch.quantity = Number(batch.quantity) - 1;
+    batch.updatedAt = new Date().toISOString();
+    inventoryList[batchIndex] = batch;
     tests.unshift(newTest);
-    localStorage.setItem(KEYS.TESTS, JSON.stringify(tests));
+
+    localStorage.setItem(KEYS.INVENTORY, JSON.stringify(inventoryList));
+    try {
+      localStorage.setItem(KEYS.TESTS, JSON.stringify(tests));
+    } catch (error) {
+      localStorage.setItem(KEYS.INVENTORY, originalInventoryJson);
+      throw error;
+    }
     return newTest;
   },
 
@@ -505,16 +555,27 @@ export const localApi = {
       }
     }
 
-    const updated = {
+    const mergedPatient = cleanPatientForStorage({
       ...existing,
       ...patientUpdates,
-      name: patientUpdates.name ? patientUpdates.name.trim() : existing.name,
       age: numAge,
-      gender: patientUpdates.gender || existing.gender,
-      phone: patientUpdates.phone !== undefined ? patientUpdates.phone.trim() : existing.phone,
-      email: patientUpdates.email !== undefined ? patientUpdates.email.trim().toLowerCase() : existing.email,
-      bloodGroup: patientUpdates.bloodGroup !== undefined ? patientUpdates.bloodGroup.trim() : existing.bloodGroup,
-      address: patientUpdates.address !== undefined ? patientUpdates.address.trim() : existing.address,
+      gender: patientUpdates.gender || existing.gender
+    });
+
+    if (!/^\+\d{7,15}$/.test(mergedPatient.phone)) {
+      throw new Error('Phone number must include a valid country code and 7 to 15 digits.');
+    }
+
+    if (patients.some((candidate, candidateIndex) => (
+      candidateIndex !== index && patientDetailsMatch(candidate, mergedPatient)
+    ))) {
+      const error = new Error('A patient with all the same details already exists.');
+      error.status = 409;
+      throw error;
+    }
+
+    const updated = {
+      ...mergedPatient,
       id: existing.id,
       patientId: existing.patientId,
       registeredAt: existing.registeredAt
@@ -667,8 +728,8 @@ export const localApi = {
     }
 
     const panelList = Array.isArray(panels) ? panels : (panels ? [panels] : []);
-    if (!panelList.length) {
-      const error = new Error('At least one compatible panel type must be specified.');
+    if (!hasValidPanels(panelList)) {
+      const error = new Error('At least one compatible panel type must be specified, using only 10-panel or 14-panel.');
       error.status = 400;
       throw error;
     }
@@ -681,6 +742,11 @@ export const localApi = {
     }
 
     const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+    if (!isValidCalendarDate(manufactureDate) || !isValidCalendarDate(expiryDate)) {
+      const error = new Error('Manufacture and expiry dates must be valid calendar dates in YYYY-MM-DD format.');
+      error.status = 400;
+      throw error;
+    }
     if (manufactureDate > today) {
       const error = new Error('Manufacture date cannot be in the future.');
       error.status = 400;
@@ -693,9 +759,10 @@ export const localApi = {
       throw error;
     }
 
+    const normalizedBrandId = brandId.trim().toLowerCase();
     const items = JSON.parse(localStorage.getItem(KEYS.INVENTORY) || '[]');
     const duplicate = items.find(
-      (it) => it.brandId === brandId && it.batchNumber?.trim().toLowerCase() === batchNumber.toLowerCase()
+      (it) => it.brandId?.trim().toLowerCase() === normalizedBrandId && it.batchNumber?.trim().toLowerCase() === batchNumber.toLowerCase()
     );
     if (duplicate) {
       const error = new Error(`A batch with number "${batchNumber}" already exists for this brand.`);
@@ -706,7 +773,7 @@ export const localApi = {
     const now = new Date().toISOString();
     const newItem = {
       id: `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      brandId,
+      brandId: normalizedBrandId,
       brandName,
       manufacturer,
       panels: panelList,
@@ -754,10 +821,10 @@ export const localApi = {
         error.status = 400;
         throw error;
       }
-      const targetBrandId = updates.brandId || existing.brandId;
+      const targetBrandId = (updates.brandId || existing.brandId).trim().toLowerCase();
       const duplicate = items.find(
         (it) => (it.id !== id && it._id !== id) &&
-                it.brandId === targetBrandId &&
+                it.brandId?.trim().toLowerCase() === targetBrandId &&
                 it.batchNumber?.trim().toLowerCase() === newBatchNumber.toLowerCase()
       );
       if (duplicate) {
@@ -771,6 +838,12 @@ export const localApi = {
     const effectiveMfd = updates.manufactureDate || existing.manufactureDate;
     const effectiveExp = updates.expiryDate || existing.expiryDate;
     const today = getTodayIST ? getTodayIST() : new Date().toISOString().slice(0, 10);
+
+    if (!isValidCalendarDate(effectiveMfd) || !isValidCalendarDate(effectiveExp)) {
+      const error = new Error('Manufacture and expiry dates must be valid calendar dates in YYYY-MM-DD format.');
+      error.status = 400;
+      throw error;
+    }
 
     if (updates.manufactureDate !== undefined && effectiveMfd > today) {
       const error = new Error('Manufacture date cannot be in the future.');
@@ -787,10 +860,16 @@ export const localApi = {
     if (updates.manufactureDate !== undefined) existing.manufactureDate = updates.manufactureDate;
     if (updates.expiryDate !== undefined) existing.expiryDate = updates.expiryDate;
     if (updates.brandName !== undefined) existing.brandName = updates.brandName;
-    if (updates.brandId !== undefined) existing.brandId = updates.brandId;
+    if (updates.brandId !== undefined) existing.brandId = updates.brandId.trim().toLowerCase();
     if (updates.manufacturer !== undefined) existing.manufacturer = updates.manufacturer;
     if (updates.panels !== undefined) {
-      existing.panels = Array.isArray(updates.panels) ? updates.panels : [updates.panels];
+      const panelList = Array.isArray(updates.panels) ? updates.panels : [updates.panels];
+      if (!hasValidPanels(panelList)) {
+        const error = new Error('At least one compatible panel type must be specified, using only 10-panel or 14-panel.');
+        error.status = 400;
+        throw error;
+      }
+      existing.panels = panelList;
     }
 
     existing.updatedAt = new Date().toISOString();

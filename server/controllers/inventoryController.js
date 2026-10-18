@@ -182,9 +182,10 @@ export const createInventoryBatch = async (req, res, next) => {
     }
 
     // Check for duplicate batchNumber within this brand (case-insensitive)
+    const normalizedBrandId = brandId.trim().toLowerCase();
     const normalizedBatch = batchNumber.toLowerCase();
     const existing = await Inventory.findOne({
-      brandId: brandId.trim(),
+      brandId: normalizedBrandId,
       batchNumberNormalized: normalizedBatch
     });
 
@@ -193,7 +194,7 @@ export const createInventoryBatch = async (req, res, next) => {
     }
 
     const batch = await Inventory.create({
-      brandId: brandId.trim(),
+      brandId: normalizedBrandId,
       brandName: brandName.trim(),
       manufacturer: manufacturer.trim(),
       panels: panelList,
@@ -249,7 +250,7 @@ export const updateInventoryBatch = async (req, res, next) => {
       if (!newBatch) {
         return res.status(400).json({ message: 'Batch number cannot be empty.' });
       }
-      const targetBrandId = updates.brandId ? updates.brandId.trim() : item.brandId;
+      const targetBrandId = updates.brandId ? updates.brandId.trim().toLowerCase() : item.brandId;
       const normalizedBatch = newBatch.toLowerCase();
 
       const duplicate = await Inventory.findOne({
@@ -292,7 +293,7 @@ export const updateInventoryBatch = async (req, res, next) => {
     }
 
     if (updates.brandName !== undefined) item.brandName = updates.brandName.trim();
-    if (updates.brandId !== undefined) item.brandId = updates.brandId.trim();
+    if (updates.brandId !== undefined) item.brandId = updates.brandId.trim().toLowerCase();
     if (updates.manufacturer !== undefined) item.manufacturer = updates.manufacturer.trim();
     if (updates.panels !== undefined) {
       const panelList = Array.isArray(updates.panels) ? updates.panels : [updates.panels];

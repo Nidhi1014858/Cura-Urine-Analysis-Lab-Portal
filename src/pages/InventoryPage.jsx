@@ -279,7 +279,9 @@ export function InventoryPage() {
       setIsAddModalOpen(false);
       await loadInventory();
     } catch (err) {
-      setFormError(err?.message || 'Failed to create inventory batch.');
+      const message = err?.message || 'Failed to create inventory batch.';
+      setFormError(message);
+      addToast(message, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -312,7 +314,9 @@ export function InventoryPage() {
       setEditingItem(null);
       await loadInventory();
     } catch (err) {
-      setFormError(err?.message || 'Failed to update inventory batch.');
+      const message = err?.message || 'Failed to update inventory batch.';
+      setFormError(message);
+      addToast(message, 'error');
     } finally {
       setIsSubmitting(false);
     }
